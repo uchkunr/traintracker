@@ -27,7 +27,7 @@ const COPY = {
       "Hozirgi vaqt shu oraliqning qancha qismi o‘tganini ko‘rsatadi.",
       "Poyezd rels chizig‘ining xuddi shu joyiga qo‘yiladi.",
     ],
-    formula: "o‘tgan ulush = (hozir - jo‘nash) / davomiylik",
+    formula: "progress = (hozir - jo‘nash) / davomiylik",
     note: "Joylashuv taxminiy: kechikishlar hisobga olinmaydi. Chipta olishdan oldin eticket.railway.uz saytida tekshirib oling. Loyiha mustaqil va O‘zbekiston temir yo‘llari bilan rasmiy aloqasi yo‘q.",
     authorTitle: "Muallif",
     contact: "Bog‘lanish",
