@@ -54,6 +54,8 @@ interface OpenStreetMapRailMapProps {
   onError: () => void;
   onStationClick: (id: string) => void;
   onTrainClick: (number: string) => void;
+  stationLabel: (name: string) => string;
+  trainLabel: (number: string) => string;
 }
 
 function routeUntil(route: RailRoute, progress: number): Coordinate[] {
@@ -77,7 +79,7 @@ function routeUntil(route: RailRoute, progress: number): Coordinate[] {
 
 export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStreetMapRailMapProps>(function OpenStreetMapRailMap({
   network, stations, trains, selectedRoute, selectedProgress, selectedStationId,
-  selectedTrainId, palette, onReady, onError, onStationClick, onTrainClick,
+  selectedTrainId, palette, onReady, onError, onStationClick, onTrainClick, stationLabel, trainLabel,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -188,7 +190,7 @@ export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStre
       const button = document.createElement("button");
       button.type = "button";
       button.className = "group relative flex size-4 items-center justify-center focus:outline-none";
-      button.setAttribute("aria-label", `${station.name} bekati`);
+      button.setAttribute("aria-label", stationLabel(station.name));
       const dot = document.createElement("span");
       dot.className = `block rounded-full border-2 border-primary bg-card shadow-sm transition-transform group-hover:scale-125 ${selectedStationId === station.id ? "size-4 ring-4 ring-primary/20" : "size-3"}`;
       const label = document.createElement("span");
@@ -203,7 +205,7 @@ export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStre
       const button = document.createElement("button");
       button.type = "button";
       button.className = `train-marker train-marker-solid relative flex size-9 items-center justify-center rounded-full border-2 border-card bg-primary text-primary-foreground shadow-md ${train.status === "running" ? "" : "opacity-55 grayscale"} ${selectedTrainId === train.number ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`;
-      button.setAttribute("aria-label", `${train.number} poyezdi`);
+      button.setAttribute("aria-label", trainLabel(train.number));
       button.innerHTML = `<span class="train-direction pointer-events-none absolute -inset-1 flex justify-center" style="transform:rotate(${train.bearing}deg)"><span class="size-2 rotate-45 rounded-[2px] bg-primary"></span></span><svg class="train-shape relative" aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="15" x="5" y="3" rx="3"/><path d="M8 7h8M5 11h14M9 15h.01M15 15h.01M8 18l-2 3M16 18l2 3"/></svg>`;
       button.addEventListener("click", () => callbacksRef.current.onTrainClick(train.number));
       markers.push(new maplibregl.Marker({ element: button, anchor: "center" }).setLngLat(train.coordinates).addTo(map));
@@ -214,7 +216,7 @@ export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStre
       markers.forEach((marker) => marker.remove());
       if (markersRef.current === markers) markersRef.current = [];
     };
-  }, [stations, trains, selectedStationId, selectedTrainId, styleRevision]);
+  }, [stations, trains, selectedStationId, selectedTrainId, styleRevision, stationLabel, trainLabel]);
 
-  return <div ref={containerRef} className="relative h-full w-full" aria-label="OpenStreetMap temiryo‘l xaritasi" />;
+  return <div ref={containerRef} className="relative h-full w-full" aria-label="OpenStreetMap" />;
 });
