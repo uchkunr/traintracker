@@ -2,7 +2,7 @@ import type { ScheduleEntry } from "./schedule";
 import { SCHEDULE } from "./schedule";
 
 export type Coordinate = [number, number];
-export interface Station { id: string; name: string; coordinates: Coordinate; source: string }
+export interface Station { id: string; name: string; coordinates: Coordinate; source: string; suburban?: boolean }
 // Station points from OSM/Wikidata, retrieved 2026-10-06. Shahrisabz uses Kitob station.
 export const STATIONS: Station[] = [
   {
@@ -238,6 +238,97 @@ export const STATIONS: Station[] = [
       38.55706
     ],
     "source": "https://www.openstreetmap.org/way/27505635"
+  },
+  {
+    "id": "Bekobod",
+    "name": "Bekobod",
+    "coordinates": [69.22834, 40.21465],
+    "source": "https://www.openstreetmap.org/node/8343551105",
+    "suburban": true
+  },
+  {
+    "id": "Chinorkent",
+    "name": "Chinorkent",
+    "coordinates": [69.93762, 41.62404],
+    "source": "https://www.openstreetmap.org/node/12618008915",
+    "suburban": true
+  },
+  {
+    "id": "Darband",
+    "name": "Darband",
+    "coordinates": [67.0354, 38.17611],
+    "source": "https://www.openstreetmap.org/node/1598983780",
+    "suburban": true
+  },
+  {
+    "id": "Miskin",
+    "name": "Miskin",
+    "coordinates": [61.26408, 41.3801],
+    "source": "https://www.openstreetmap.org/node/2396470761",
+    "suburban": true
+  },
+  {
+    "id": "Nukus",
+    "name": "Nukus",
+    "coordinates": [59.64271, 42.43778],
+    "source": "https://www.openstreetmap.org/node/1584776373",
+    "suburban": true
+  },
+  {
+    "id": "Parkent",
+    "name": "Parkent",
+    "coordinates": [69.66655, 41.30047],
+    "source": "https://www.openstreetmap.org/node/13766680940",
+    "suburban": true
+  },
+  {
+    "id": "Sirdaryo",
+    "name": "Sirdaryo",
+    "coordinates": [68.67156, 40.82934],
+    "source": "https://www.openstreetmap.org/node/1545604235",
+    "suburban": true
+  },
+  {
+    "id": "Surxonobod",
+    "name": "Surxonobod",
+    "coordinates": [67.50722, 37.73588],
+    "source": "https://www.openstreetmap.org/node/449118440",
+    "suburban": true
+  },
+  {
+    "id": "Uchquduq",
+    "name": "Uchquduq",
+    "coordinates": [63.65708, 42.1175],
+    "source": "https://www.openstreetmap.org/node/1592211596",
+    "suburban": true
+  },
+  {
+    "id": "Urganch Aerovokzal",
+    "name": "Urganch Aerovokzal",
+    "coordinates": [60.63472, 41.5837],
+    "source": "https://www.openstreetmap.org/node/14110153095",
+    "suburban": true
+  },
+  {
+    "id": "Urgut",
+    "name": "Urgut",
+    "coordinates": [67.22976, 39.43951],
+    "source": "https://www.openstreetmap.org/node/13717491021",
+    "suburban": true
+  },
+  {
+    "id": "Xojikent",
+    "name": "Xojikent",
+    "coordinates": [69.91722, 41.61759],
+    "source": "https://www.openstreetmap.org/node/1124471506",
+    "suburban": true
+  },
+  {
+    "id": "Xovos",
+    "name": "Xovos",
+    "coordinates": [68.83597, 40.21071],
+    "source": "https://www.openstreetmap.org/node/1545661674",
+    "suburban": true
   }
 ];
 
@@ -334,7 +425,7 @@ function distance(a: Coordinate, b: Coordinate) {
 }
 
 // Shared static segments are joined once; no browser routing or external data requests.
-export function buildRoutes(network: RailNetwork): Record<string, RailRoute | undefined> {
+export function buildRoutes(network: RailNetwork, electricLines?: Record<string, Coordinate[]>): Record<string, RailRoute | undefined> {
   const segments = network.features.map((feature) => ({ ...feature.properties, coordinates: feature.geometry.coordinates,
     length: feature.geometry.coordinates.reduce((sum, point, i, points) => sum + (i ? distance(points[i - 1], point) : 0), 0) }));
   function connect(from: string, to: string): Coordinate[] | undefined {
@@ -362,6 +453,17 @@ export function buildRoutes(network: RailNetwork): Record<string, RailRoute | un
   const routes: Record<string, RailRoute | undefined> = {};
   const cache = new Map<string, RailRoute | undefined>();
   for (const train of SCHEDULE) {
+    if (train.kind) {
+      // Suburban routes come from precomputed OSM geometry, stored origin to destination.
+      const line = electricLines?.[train.routeId!];
+      const points = line && (train.inbound ? [...line].reverse() : line);
+      if (points && points.length > 1) {
+        const cumulative = [0];
+        for (let i = 1; i < points.length; i++) cumulative.push(cumulative[i - 1] + distance(points[i - 1], points[i]));
+        routes[train.number] = { coordinates: points, cumulative, distance: cumulative.at(-1)! };
+      }
+      continue;
+    }
     const stops = routeWaypoints(train);
     const key = stops.join("|");
     if (cache.has(key)) { routes[train.number] = cache.get(key); continue; }

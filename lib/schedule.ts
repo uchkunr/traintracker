@@ -8,10 +8,16 @@ export interface ScheduleEntry {
   departDays: DayRule;
   arriveTime: string;
   arriveDays: DayRule;
+  kind?: "electric";
+  routeId?: number;
+  price?: number;
+  region?: string;
+  cancelled?: string;
+  inbound?: boolean;
 }
 export const TIME_ZONE = "Asia/Tashkent";
 // User-supplied timetable, 6 October 2026. All times use UTC+5, including foreign terminals.
-export const SCHEDULE: ScheduleEntry[] = [
+const INTERCITY_SCHEDULE: ScheduleEntry[] = [
   {
     "number": "710F",
     "from": "Toshkent Markaziy",
@@ -1329,6 +1335,68 @@ export const SCHEDULE: ScheduleEntry[] = [
     }
   }
 ];
+// Suburban electric trains, from the ticket.elektropoyezd.uz snapshot (latest.json, 6 Oct 2026).
+// When a train number is listed on several overlapping routes the longest run is kept.
+const ELECTRIC_SCHEDULE: ScheduleEntry[] = [
+  {"number": "7201", "from": "Toshkent Janubiy", "via": [], "to": "Chinorkent", "departTime": "08:47", "departDays": {"kind": "daily"}, "arriveTime": "10:33", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 1, "price": 30000, "region": "Toshkent"},
+  {"number": "7202", "from": "Chinorkent", "via": [], "to": "Toshkent Janubiy", "departTime": "10:53", "departDays": {"kind": "daily"}, "arriveTime": "12:32", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 1, "price": 30000, "region": "Toshkent", "inbound": true},
+  {"number": "7203", "from": "Toshkent Janubiy", "via": [], "to": "Chinorkent", "departTime": "12:15", "departDays": {"kind": "daily"}, "arriveTime": "13:53", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 1, "price": 30000, "region": "Toshkent"},
+  {"number": "7204", "from": "Chinorkent", "via": [], "to": "Toshkent Janubiy", "departTime": "14:19", "departDays": {"kind": "daily"}, "arriveTime": "15:52", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 1, "price": 30000, "region": "Toshkent", "inbound": true},
+  {"number": "6442", "from": "Xojikent", "via": [], "to": "Toshkent Janubiy", "departTime": "05:20", "departDays": {"kind": "daily"}, "arriveTime": "07:44", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 2, "price": 10000, "region": "Toshkent", "inbound": true},
+  {"number": "6440", "from": "Xojikent", "via": [], "to": "Toshkent Janubiy", "departTime": "06:25", "departDays": {"kind": "daily"}, "arriveTime": "08:53", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 2, "price": 10000, "region": "Toshkent", "inbound": true},
+  {"number": "6429", "from": "Toshkent Janubiy", "via": [], "to": "Xojikent", "departTime": "07:46", "departDays": {"kind": "daily"}, "arriveTime": "10:01", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 2, "price": 10000, "region": "Toshkent"},
+  {"number": "6430", "from": "Xojikent", "via": [], "to": "Toshkent Janubiy", "departTime": "10:24", "departDays": {"kind": "daily"}, "arriveTime": "12:43", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 2, "price": 10000, "region": "Toshkent", "inbound": true},
+  {"number": "6435", "from": "Toshkent Janubiy", "via": [], "to": "Xojikent", "departTime": "13:32", "departDays": {"kind": "daily"}, "arriveTime": "15:53", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 2, "price": 10000, "region": "Toshkent"},
+  {"number": "6436", "from": "Xojikent", "via": [], "to": "Toshkent Janubiy", "departTime": "16:12", "departDays": {"kind": "daily"}, "arriveTime": "18:23", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 2, "price": 10000, "region": "Toshkent", "inbound": true},
+  {"number": "6437", "from": "Toshkent Janubiy", "via": [], "to": "Xojikent", "departTime": "16:50", "departDays": {"kind": "daily"}, "arriveTime": "19:03", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 2, "price": 10000, "region": "Toshkent"},
+  {"number": "6441", "from": "Toshkent Janubiy", "via": [], "to": "Xojikent", "departTime": "18:55", "departDays": {"kind": "daily"}, "arriveTime": "21:19", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 2, "price": 10000, "region": "Toshkent"},
+  {"number": "6453", "from": "Xovos", "via": [], "to": "Toshkent Janubiy", "departTime": "04:00", "departDays": {"kind": "daily"}, "arriveTime": "07:17", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 3, "price": 12000, "region": "Sirdaryo", "inbound": true},
+  {"number": "6412", "from": "Toshkent Janubiy", "via": [], "to": "Xovos", "departTime": "09:21", "departDays": {"kind": "daily"}, "arriveTime": "12:30", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 3, "price": 12000, "region": "Sirdaryo"},
+  {"number": "6411", "from": "Xovos", "via": [], "to": "Toshkent Janubiy", "departTime": "13:05", "departDays": {"kind": "daily"}, "arriveTime": "16:31", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 3, "price": 12000, "region": "Sirdaryo", "inbound": true},
+  {"number": "6454", "from": "Toshkent Janubiy", "via": [], "to": "Xovos", "departTime": "19:00", "departDays": {"kind": "daily"}, "arriveTime": "22:51", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 3, "price": 12000, "region": "Sirdaryo"},
+  {"number": "6414", "from": "Toshkent Janubiy", "via": [], "to": "Guliston", "departTime": "13:01", "departDays": {"kind": "daily"}, "arriveTime": "15:19", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 4, "price": 12000, "region": "Sirdaryo", "cancelled": "Texnik sabablarga ko'ra"},
+  {"number": "6413", "from": "Guliston", "via": [], "to": "Toshkent Janubiy", "departTime": "15:39", "departDays": {"kind": "daily"}, "arriveTime": "18:00", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 4, "price": 12000, "region": "Sirdaryo", "inbound": true, "cancelled": "Texnik sabablarga ko'ra"},
+  {"number": "6407", "from": "Sirdaryo", "via": [], "to": "Toshkent Janubiy", "departTime": "04:36", "departDays": {"kind": "daily"}, "arriveTime": "06:25", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 5, "price": 12000, "region": "Sirdaryo", "inbound": true},
+  {"number": "6418", "from": "Toshkent Janubiy", "via": [], "to": "Sirdaryo", "departTime": "20:05", "departDays": {"kind": "daily"}, "arriveTime": "22:19", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 5, "price": 12000, "region": "Sirdaryo"},
+  {"number": "7049", "from": "Bekobod", "via": [], "to": "Toshkent Markaziy", "departTime": "06:00", "departDays": {"kind": "daily"}, "arriveTime": "09:16", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 6, "price": 15000, "region": "Sirdaryo", "inbound": true},
+  {"number": "7050", "from": "Toshkent Markaziy", "via": [], "to": "Bekobod", "departTime": "18:34", "departDays": {"kind": "daily"}, "arriveTime": "21:38", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 6, "price": 15000, "region": "Sirdaryo"},
+  {"number": "7094", "from": "Qo'qon", "via": [], "to": "Namangan", "departTime": "14:00", "departDays": {"kind": "daily"}, "arriveTime": "16:21", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 7, "price": 20000, "region": "Farg'ona"},
+  {"number": "7092", "from": "Namangan", "via": [], "to": "Qo'qon", "departTime": "17:00", "departDays": {"kind": "daily"}, "arriveTime": "19:11", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 7, "price": 20000, "region": "Farg'ona", "inbound": true},
+  {"number": "6312", "from": "Qo'qon", "via": [], "to": "Andijon", "departTime": "05:50", "departDays": {"kind": "daily"}, "arriveTime": "08:33", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 8, "price": 15000, "region": "Farg'ona"},
+  {"number": "6313", "from": "Andijon", "via": [], "to": "Qo'qon", "departTime": "17:10", "departDays": {"kind": "daily"}, "arriveTime": "19:45", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 8, "price": 15000, "region": "Farg'ona", "inbound": true},
+  {"number": "7091/93", "from": "Qo'qon", "via": [], "to": "Qo'qon", "departTime": "05:10", "departDays": {"kind": "daily"}, "arriveTime": "13:43", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 9, "price": 20000, "region": "Farg'ona"},
+  {"number": "6317", "from": "Shahrisabz", "via": [], "to": "Qarshi", "departTime": "05:20", "departDays": {"kind": "daily"}, "arriveTime": "07:44", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 10, "price": 10000, "region": "Qashqadaryo", "inbound": true},
+  {"number": "6318", "from": "Qarshi", "via": [], "to": "Shahrisabz", "departTime": "16:51", "departDays": {"kind": "daily"}, "arriveTime": "19:13", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 10, "price": 10000, "region": "Qashqadaryo"},
+  {"number": "6315", "from": "Qarshi", "via": [], "to": "Buxoro", "departTime": "08:14", "departDays": {"kind": "daily"}, "arriveTime": "11:00", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 11, "price": 12000, "region": "Buxoro"},
+  {"number": "6316", "from": "Buxoro", "via": [], "to": "Qarshi", "departTime": "13:30", "departDays": {"kind": "daily"}, "arriveTime": "16:24", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 11, "price": 12000, "region": "Buxoro", "inbound": true},
+  {"number": "6379", "from": "Sariosiyo", "via": [], "to": "Termiz", "departTime": "03:45", "departDays": {"kind": "daily"}, "arriveTime": "07:43", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 12, "price": 15000, "region": "Surxondaryo", "inbound": true},
+  {"number": "6376", "from": "Termiz", "via": [], "to": "Sariosiyo", "departTime": "06:32", "departDays": {"kind": "daily"}, "arriveTime": "09:54", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 12, "price": 15000, "region": "Surxondaryo"},
+  {"number": "6375", "from": "Sariosiyo", "via": [], "to": "Termiz", "departTime": "10:54", "departDays": {"kind": "daily"}, "arriveTime": "14:25", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 12, "price": 15000, "region": "Surxondaryo", "inbound": true},
+  {"number": "6378", "from": "Termiz", "via": [], "to": "Sariosiyo", "departTime": "13:01", "departDays": {"kind": "daily"}, "arriveTime": "16:36", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 12, "price": 15000, "region": "Surxondaryo"},
+  {"number": "6377", "from": "Sariosiyo", "via": [], "to": "Termiz", "departTime": "17:46", "departDays": {"kind": "daily"}, "arriveTime": "21:17", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 12, "price": 15000, "region": "Surxondaryo", "inbound": true},
+  {"number": "6380", "from": "Termiz", "via": [], "to": "Sariosiyo", "departTime": "18:00", "departDays": {"kind": "daily"}, "arriveTime": "22:10", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 12, "price": 15000, "region": "Surxondaryo"},
+  {"number": "6381", "from": "Darband", "via": [], "to": "Termiz", "departTime": "05:36", "departDays": {"kind": "daily"}, "arriveTime": "08:41", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 13, "price": 15000, "region": "Surxondaryo", "inbound": true},
+  {"number": "6382", "from": "Termiz", "via": [], "to": "Darband", "departTime": "16:02", "departDays": {"kind": "daily"}, "arriveTime": "19:16", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 13, "price": 15000, "region": "Surxondaryo"},
+  {"number": "6384", "from": "Surxonobod", "via": [], "to": "Termiz", "departTime": "05:05", "departDays": {"kind": "daily"}, "arriveTime": "07:40", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 14, "price": 15000, "region": "Surxondaryo", "inbound": true},
+  {"number": "6383", "from": "Termiz", "via": [], "to": "Surxonobod", "departTime": "18:10", "departDays": {"kind": "daily"}, "arriveTime": "20:45", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 14, "price": 15000, "region": "Surxondaryo"},
+  {"number": "6352", "from": "Miskin", "via": [], "to": "Qo'ng'irot", "departTime": "04:27", "departDays": {"kind": "daily"}, "arriveTime": "10:48", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 15, "price": 30000, "region": "Qoraqalpog'iston", "inbound": true},
+  {"number": "6351", "from": "Qo'ng'irot", "via": [], "to": "Miskin", "departTime": "12:40", "departDays": {"kind": "daily"}, "arriveTime": "18:53", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 15, "price": 30000, "region": "Qoraqalpog'iston"},
+  {"number": "6356", "from": "Qo'ng'irot", "via": [], "to": "Nukus", "departTime": "12:40", "departDays": {"kind": "daily"}, "arriveTime": "14:53", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 16, "price": 10000, "region": "Qoraqalpog'iston"},
+  {"number": "6355", "from": "Nukus", "via": [], "to": "Qo'ng'irot", "departTime": "08:40", "departDays": {"kind": "daily"}, "arriveTime": "10:48", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 16, "price": 10000, "region": "Qoraqalpog'iston", "inbound": true},
+  {"number": "6354", "from": "Nukus", "via": [], "to": "Urganch", "departTime": "10:00", "departDays": {"kind": "weekdays", "days": [4]}, "arriveTime": "13:30", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 17, "price": 25000, "region": "Qoraqalpog'iston"},
+  {"number": "6353", "from": "Urganch", "via": [], "to": "Nukus", "departTime": "16:50", "departDays": {"kind": "daily"}, "arriveTime": "20:15", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 17, "price": 25000, "region": "Qoraqalpog'iston", "inbound": true},
+  {"number": "6202", "from": "Urgut", "via": [], "to": "Samarqand", "departTime": "06:30", "departDays": {"kind": "daily"}, "arriveTime": "07:34", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 18, "price": 10000, "region": "Samarqand"},
+  {"number": "6203", "from": "Samarqand", "via": [], "to": "Urgut", "departTime": "18:20", "departDays": {"kind": "daily"}, "arriveTime": "19:24", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 18, "price": 10000, "region": "Samarqand", "inbound": true},
+  {"number": "6462", "from": "Navoiy", "via": [], "to": "Uchquduq", "departTime": "05:30", "departDays": {"kind": "weekdays", "days": [1, 3, 5]}, "arriveTime": "11:11", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 24, "price": 20000, "region": "Navoiy"},
+  {"number": "6461", "from": "Uchquduq", "via": [], "to": "Navoiy", "departTime": "14:50", "departDays": {"kind": "weekdays", "days": [1, 3, 5]}, "arriveTime": "21:01", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 24, "price": 20000, "region": "Navoiy", "inbound": true},
+  {"number": "7055", "from": "Urganch Aerovokzal", "via": [], "to": "Xiva", "departTime": "08:40", "departDays": {"kind": "daily"}, "arriveTime": "09:22", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 27, "price": 25000, "region": "Xiva"},
+  {"number": "7058", "from": "Xiva", "via": [], "to": "Urganch Aerovokzal", "departTime": "21:00", "departDays": {"kind": "daily"}, "arriveTime": "21:42", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 27, "price": 25000, "region": "Xiva", "inbound": true},
+  {"number": "7208", "from": "Parkent", "via": [], "to": "Toshkent Janubiy", "departTime": "06:47", "departDays": {"kind": "daily"}, "arriveTime": "08:08", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 28, "price": 10000, "region": "Toshkent", "inbound": true},
+  {"number": "7207", "from": "Toshkent Janubiy", "via": [], "to": "Parkent", "departTime": "18:24", "departDays": {"kind": "daily"}, "arriveTime": "19:37", "arriveDays": {"kind": "daily"}, "kind": "electric", "routeId": 28, "price": 10000, "region": "Toshkent"},
+];
+
+export const SCHEDULE: ScheduleEntry[] = [...INTERCITY_SCHEDULE, ...ELECTRIC_SCHEDULE];
+
 
 const DAY = 86_400_000;
 const OFFSET = 5 * 3_600_000;

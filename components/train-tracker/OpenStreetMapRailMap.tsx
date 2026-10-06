@@ -31,9 +31,11 @@ export interface MapTrain {
   bearing: number;
 }
 
+export interface MapPadding { top: number; bottom: number; left: number; right: number }
+
 export interface OpenStreetMapRailMapRef {
-  fitBounds: (bounds: [Coordinate, Coordinate]) => void;
-  flyTo: (coordinates: Coordinate) => void;
+  fitBounds: (bounds: [Coordinate, Coordinate], padding?: MapPadding) => void;
+  flyTo: (coordinates: Coordinate, padding?: MapPadding) => void;
   zoomIn: () => void;
   zoomOut: () => void;
   reset: () => void;
@@ -88,8 +90,8 @@ export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStre
   useEffect(() => { lifecycleRef.current = { onReady, onError }; }, [onReady, onError]);
 
   useImperativeHandle(ref, () => ({
-    fitBounds: (bounds) => mapRef.current?.fitBounds(bounds, { padding: 72, duration: 650, maxZoom: 10 }),
-    flyTo: (coordinates) => mapRef.current?.flyTo({ center: coordinates, zoom: 10, duration: 700, essential: true }),
+    fitBounds: (bounds, padding) => mapRef.current?.fitBounds(bounds, { padding: padding ?? 72, duration: 650, maxZoom: 10 }),
+    flyTo: (coordinates, padding) => mapRef.current?.flyTo({ center: coordinates, zoom: 10, duration: 700, essential: true, ...(padding && { padding }) }),
     zoomIn: () => mapRef.current?.zoomIn({ duration: 200 }),
     zoomOut: () => mapRef.current?.zoomOut({ duration: 200 }),
     reset: () => mapRef.current?.easeTo({ center: [66.5, 40], zoom: 6.2, bearing: 0, pitch: 0, duration: 250 }),

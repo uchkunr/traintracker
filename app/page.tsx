@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Clock3, Gauge, ListFilter, LocateFixed, MapPin, Ruler, Minus, Monitor, Moon, Plus, Search, Sun, TrainFront, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, Check, Clock3, Gauge, ListFilter, LocateFixed, MapPin, Zap, TriangleAlert, Ruler, Minus, Monitor, Moon, Plus, Search, Sun, TrainFront, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -12,10 +12,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { OpenStreetMapRailMap, type OpenStreetMapRailMapRef } from "@/components/train-tracker/OpenStreetMapRailMap";
 import Image from "next/image";
-import { INTERNATIONAL_RAIL_SEGMENTS, STATIONS, buildRoutes, pointAlong, type RailNetwork } from "@/lib/train-data";
+import { INTERNATIONAL_RAIL_SEGMENTS, STATIONS, buildRoutes, pointAlong, type Coordinate, type RailNetwork } from "@/lib/train-data";
 import { SCHEDULE, getServiceState, formatDateTime, formatDays, formatDuration, type ScheduledTrain } from "@/lib/schedule";
 import { STATION_INFO } from "@/lib/station-info";
 import { TRAIN_INFO } from "@/lib/trains-info";
+import { estimateStops, stopNames } from "@/lib/train-stops";
+import { ELECTRIC_ROUTES } from "@/lib/electric-trains";
 
 const detailTime = new Intl.DateTimeFormat("uz", { timeZone: "Asia/Tashkent", hour: "2-digit", minute: "2-digit", hour12: false });
 const detailDate = new Intl.DateTimeFormat("uz", { timeZone: "Asia/Tashkent", day: "2-digit", month: "2-digit", year: "numeric" });
@@ -32,10 +34,13 @@ export default function Home() {
   const [now, setNow] = useState<number | null>(null);
   const [network, setNetwork] = useState<RailNetwork | null>(null);
   const [palette, setPalette] = useState<{ accent: string; rail: string; casing: string } | null>(null);
-  const routes = useMemo(() => network ? buildRoutes(network) : {}, [network]);
+  const [electricLines, setElectricLines] = useState<Record<string, Coordinate[]> | null>(null);
+  const routes = useMemo(() => network ? buildRoutes(network, electricLines ?? undefined) : {}, [network, electricLines]);
   const trains = useMemo(() => now === null ? [] : SCHEDULE.map((train) => getServiceState(train, now)), [now]);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("all");
+  const [status, setStatus] = useState("waiting");
+  const [category, setCategory] = useState<"all" | "intercity" | "electric">("all");
+  const [region, setRegion] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [themeChoice, setThemeChoice] = useState("system");
@@ -46,6 +51,10 @@ export default function Home() {
   const [stationId, setStationId] = useState<string | null>(null);
   const [mapStatus, setMapStatus] = useState<"loading" | "ready" | "error">("loading");
   const [mapAttempt, setMapAttempt] = useState(0);
+  const [sheetH, setSheetH] = useState<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef({ startY: 0, startH: 0, lastY: 0, lastT: 0, velocity: 0 });
+  const chipDrag = useRef({ active: false, startX: 0, startLeft: 0, moved: false });
   const theme = themeChoice === "system" ? (systemDark ? "dark" : "light") : themeChoice === "dark" ? "dark" : "light";
   useEffect(() => {
     const frame = requestAnimationFrame(() => setNow(Date.now()));
@@ -55,6 +64,11 @@ export default function Home() {
       .then((response) => { if (!response.ok) throw new Error("Rail geometry unavailable"); return response.json(); })
       .then((data: RailNetwork) => setNetwork({ ...data, features: [...data.features, ...INTERNATIONAL_RAIL_SEGMENTS] }))
       .catch((error: Error) => { if (error.name !== "AbortError") setMapStatus("error"); });
+    const loadElectric = (attempt: number) => fetch("/electric-routes.json", { signal: controller.signal })
+      .then((response) => { if (!response.ok) throw new Error("Electric routes unavailable"); return response.json(); })
+      .then((data: { routes: Record<string, { coordinates: Coordinate[] }> }) => setElectricLines(Object.fromEntries(Object.entries(data.routes).map(([id, route]) => [id, route.coordinates]))))
+      .catch((error: Error) => { if (error.name !== "AbortError" && attempt < 3) window.setTimeout(() => loadElectric(attempt + 1), 2000 * (attempt + 1)); });
+    loadElectric(0);
     return () => { cancelAnimationFrame(frame); clearInterval(timer); controller.abort(); };
   }, []);
 
@@ -95,56 +109,105 @@ export default function Home() {
       setDetailsOpen(false);
       setListOpen(false);
       setStationId(nearest.id);
-      mapRef.current?.flyTo(nearest.coordinates);
+      mapRef.current?.flyTo(nearest.coordinates, viewPadding(true));
     }, () => { /* Without permission the default map view stays. */ });
   }, [mapStatus]);
+
+  useEffect(() => {
+    if (!listOpen && !stationId && !detailsOpen) return;
+    const frame = requestAnimationFrame(() => setSheetH(null));
+    return () => cancelAnimationFrame(frame);
+  }, [listOpen, stationId, detailsOpen]);
+
+  const sheetStyle = isMobile ? { height: sheetH ?? "58dvh", transition: `transform 200ms ease-in-out, opacity 200ms ease-in-out${dragging ? "" : ", height 350ms cubic-bezier(0.32, 0.72, 0, 1)"}` } : undefined;
+  const sheetHandle = (
+    <div
+      role="separator"
+      aria-label="Panelni surish"
+      className="flex h-9 shrink-0 cursor-grab touch-none items-center justify-center active:cursor-grabbing"
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        const startH = (event.currentTarget.parentElement as HTMLElement).getBoundingClientRect().height;
+        drag.current = { startY: event.clientY, startH, lastY: event.clientY, lastT: performance.now(), velocity: 0 };
+        setSheetH(startH);
+        setDragging(true);
+      }}
+      onPointerMove={(event) => {
+        if (!dragging) return;
+        const d = drag.current, now = performance.now();
+        d.velocity = (d.lastY - event.clientY) / Math.max(1, now - d.lastT);
+        d.lastY = event.clientY; d.lastT = now;
+        setSheetH(Math.min(window.innerHeight * 0.92, Math.max(96, d.startH + d.startY - event.clientY)));
+      }}
+      onPointerUp={() => {
+        if (!dragging) return;
+        const snaps = [130, window.innerHeight * 0.5, window.innerHeight * 0.9];
+        const projected = (sheetH ?? drag.current.startH) + drag.current.velocity * 220;
+        setSheetH(snaps.reduce((best, snap) => Math.abs(snap - projected) < Math.abs(best - projected) ? snap : best));
+        setDragging(false);
+      }}
+      onPointerCancel={() => setDragging(false)}
+    ><span className="h-1 w-9 rounded-full bg-border" /></div>
+  );
 
   const selected = trains.find((train) => train.number === selectedId);
   const selectedRoute = selected ? routes[selected.number] : undefined;
   const info = selected ? TRAIN_INFO[selected.number] : undefined;
-  const detailStops = (() => {
-    if (!selected) return [];
-    return [selected.from, ...selected.via, selected.to].map((name, index, stops) => {
-      let progress: number | null = index === 0 ? 0 : index === stops.length - 1 ? 1 : null;
-      const station = STATIONS.find((item) => item.name === name);
-      if (progress === null && station && selectedRoute) {
-        let nearest = 0, closest = Infinity;
-        selectedRoute.coordinates.forEach((point, i) => {
-          const distance = ((point[0] - station.coordinates[0]) * Math.cos(station.coordinates[1] * Math.PI / 180)) ** 2 + (point[1] - station.coordinates[1]) ** 2;
-          if (distance < closest) { closest = distance; nearest = i; }
-        });
-        progress = selectedRoute.cumulative[nearest] / selectedRoute.distance;
-      }
-      return { name, progress, time: index === 0 ? selected.departure : index === stops.length - 1 ? selected.arrival : null };
-    });
+  const detailStops = selected ? estimateStops(selected) : [];
+  const untilNext = (() => {
+    if (!selected || now === null) return "";
+    const minutes = Math.max(0, Math.round((selected.nextDeparture - now) / 60_000));
+    const days = Math.floor(minutes / 1440), hours = Math.floor(minutes % 1440 / 60);
+    return days > 0 ? `${days} kun ${hours} soat` : hours > 0 ? `${hours} soat ${minutes % 60} daq.` : `${minutes} daq.`;
   })();
   const currentStopIndex = selected ? Math.max(0, detailStops.findLastIndex((stop) => stop.progress !== null && stop.progress <= selected.progress)) : 0;
 
   const search = query.trim().toLocaleLowerCase("uz").replace(/[‘’ʻʼ']/g, "");
-  const matchingTrains = trains.filter((train) =>
-    `${train.number} ${train.from} ${train.via.join(" ")} ${train.to}`.toLocaleLowerCase("uz").replace(/[‘’ʻʼ']/g, "").includes(search),
+  const statusOrder = { running: 0, waiting: 1, arrived: 2 };
+  const sortKey = (train: ScheduledTrain) => train.status === "running" ? train.arrival : train.status === "waiting" ? train.departure : train.nextDeparture;
+  const categoryTrains = trains.filter((train) => (category === "all" || (category === "electric") === Boolean(train.kind)) && (category !== "electric" || region === "all" || train.region === region));
+  const matchingTrains = categoryTrains.filter((train) =>
+    `${train.number} ${train.from} ${train.via.join(" ")} ${stopNames(train.number).join(" ")} ${train.to}`.toLocaleLowerCase("uz").replace(/[‘’ʻʼ']/g, "").includes(search),
   );
-  const visibleTrains = matchingTrains.filter((train) => status === "all" || train.status === status);
+  const visibleTrains = matchingTrains.filter((train) => status === "all" || train.status === status).sort((a, b) => statusOrder[a.status] - statusOrder[b.status] || sortKey(a) - sortKey(b));
+  const electricRegions = [...new Set(ELECTRIC_ROUTES.map((route) => route.region))];
+  const focused = detailsOpen ? selected : undefined;
+  const focusedStops = focused ? new Set(estimateStops(focused).map((stop) => stop.name)) : null;
+  const mapStations = STATIONS.filter((station) => focusedStops ? focusedStops.has(station.name) : !station.suburban || category === "electric");
+  function trainMarker(train: ScheduledTrain): { number: string; status: ScheduledTrain["status"]; coordinates: Coordinate; bearing: number }[] {
+    if (train.status === "running") return routes[train.number] ? [{ number: train.number, status: train.status, ...pointAlong(routes[train.number]!, train.progress) }] : [];
+    const station = STATIONS.find((item) => item.name === train.from);
+    return station ? [{ number: train.number, status: train.status, coordinates: station.coordinates, bearing: 0 }] : [];
+  }
   const moving = trains.filter((train) => train.status === "running").length;
   const activeStation = STATIONS.find((station) => station.id === stationId);
   const activeStationInfo = activeStation ? STATION_INFO[activeStation.name] : undefined;
-  const stationServices = activeStation ? trains
-    .filter((train) => train.runsToday && (train.from === activeStation.name || train.to === activeStation.name))
-    .map((train) => ({ train, time: train.from === activeStation.name ? train.departure : train.arrival }))
-    .sort((a, b) => a.time - b.time) : [];
+  const stationServices = activeStation ? trains.flatMap<{ train: ScheduledTrain; time: number; kind: "departure" | "arrival" | "stop" }>((train) => {
+    if (!train.runsToday) return [];
+    if (train.from === activeStation.name) return [{ train, time: train.departure, kind: "departure" as const }];
+    if (train.to === activeStation.name) return [{ train, time: train.arrival, kind: "arrival" as const }];
+    const stop = estimateStops(train).slice(1, -1).find((item) => item.name === activeStation.name);
+    return stop && now !== null && detailDate.format(stop.arrival) === detailDate.format(now) ? [{ train, time: stop.arrival, kind: "stop" as const }] : [];
+  }).sort((a, b) => a.time - b.time) : [];
+  // Keep the focused point clear of the floating list (left) and the detail/station sheet (right on desktop, bottom on mobile).
+  function viewPadding(sheet: boolean) {
+    return isMobile
+      ? { top: 110, left: 24, right: 24, bottom: sheet ? Math.round(window.innerHeight * 0.6) : 96 }
+      : { top: 96, bottom: 48, left: 360, right: sheet ? 450 : 80 };
+  }
   function selectTrain(train: ScheduledTrain) {
     setSelectedId(train.number);
     setListOpen(false);
     setDetailsOpen(true);
     if (train.status !== "running") {
       const station = STATIONS.find((item) => item.name === train.from);
-      if (station) mapRef.current?.flyTo(station.coordinates);
+      if (station) mapRef.current?.flyTo(station.coordinates, viewPadding(true));
       return;
     }
     const coordinates = routes[train.number]?.coordinates ?? STATIONS.filter((station) => station.name === train.from || station.name === train.to).map((station) => station.coordinates);
     if (!coordinates.length) return;
     const lngs = coordinates.map((point) => point[0]), lats = coordinates.map((point) => point[1]);
-    mapRef.current?.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]]);
+    mapRef.current?.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], viewPadding(true));
   }
   function changeStatus(nextStatus: string) {
     setStatus(nextStatus);
@@ -155,13 +218,16 @@ export default function Home() {
     const position = nextStatus === "running" && routes[train.number]
       ? pointAlong(routes[train.number]!, train.progress).coordinates
       : station?.coordinates;
-    if (position) mapRef.current?.flyTo(position);
+    if (position) mapRef.current?.flyTo(position, viewPadding(false));
   }
 
   const trainList = (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="px-5 pt-5">
         <div className="mb-4 flex items-baseline justify-between"><h2 className="text-lg font-semibold tracking-tight">Poyezdlar</h2><span className="text-xs text-muted-foreground tabular-nums">{visibleTrains.length} ta reys</span></div>
+        <div role="tablist" aria-label="Poyezd turi" className="mb-3 grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+          {([["all", "Barchasi", trains.length], ["intercity", "Uzoq", trains.filter((train) => !train.kind).length], ["electric", "Elektr", trains.filter((train) => train.kind).length]] as const).map(([value, label, count]) => <button key={value} role="tab" aria-selected={category === value} onClick={() => { setCategory(value); setRegion("all"); }} className={`flex h-9 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors ${category === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{value === "electric" && <Zap className="size-3.5" />}{label}<span className="tabular-nums opacity-60">{count}</span></button>)}
+        </div>
         <div className="flex gap-2">
           <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute top-3 left-3 size-4 text-muted-foreground" /><Input aria-label="Poyezdni qidirish" placeholder="Poyezd yoki shahar" value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 bg-card pl-9 pr-10" />{query && <Button variant="ghost" size="icon" className="absolute top-0 right-0 size-10" aria-label="Qidiruvni tozalash" onClick={() => setQuery("")}><X className="size-3.5" /></Button>}</div>
           <DropdownMenu>
@@ -174,14 +240,23 @@ export default function Home() {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        {category === "electric" && <div
+          className="-mx-5 mt-3 flex cursor-grab touch-pan-x gap-1.5 overflow-x-auto px-5 pb-1 select-none [scrollbar-width:none] [mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%-32px),transparent)] active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
+          onWheel={(event) => { if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY; }}
+          onPointerDown={(event) => { if (event.pointerType !== "mouse") return; chipDrag.current = { active: true, startX: event.clientX, startLeft: event.currentTarget.scrollLeft, moved: false }; }}
+          onPointerMove={(event) => { const d = chipDrag.current; if (!d.active) return; const delta = event.clientX - d.startX; if (Math.abs(delta) > 4) { d.moved = true; event.currentTarget.setPointerCapture(event.pointerId); } if (d.moved) event.currentTarget.scrollLeft = d.startLeft - delta; }}
+          onPointerUp={() => { chipDrag.current.active = false; }}
+          onPointerCancel={() => { chipDrag.current.active = false; }}
+          onClickCapture={(event) => { if (chipDrag.current.moved) { event.preventDefault(); event.stopPropagation(); chipDrag.current.moved = false; } }}
+        >{["all", ...electricRegions].map((name) => <button key={name} onClick={() => setRegion(name)} aria-pressed={region === name} className={`h-8 shrink-0 rounded-full border px-3 text-xs font-medium transition-colors ${region === name ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground"}`}>{name === "all" ? "Hammasi" : name}</button>)}</div>}
       </div>
       <ScrollArea className="mt-3 min-h-0 flex-1"><div className="px-2 pb-3">
           {now === null ? <p role="status" className="p-5 text-sm text-muted-foreground">Jadval yuklanmoqda</p> : visibleTrains.length === 0 && <div role="status" className="px-3 py-10 text-center"><p className="text-sm font-medium">Poyezd topilmadi</p><Button variant="link" className="mt-2 h-10" onClick={() => { setQuery(""); setStatus("all"); }}>Filtrlarni tozalash</Button></div>}
           {visibleTrains.map((train) => <Button key={train.number} variant="ghost" aria-label={`${train.number} poyezdi haqida`} aria-pressed={selectedId === train.number} data-highlighted={selectedId === train.number || hoveredId === train.number} onMouseEnter={() => setHoveredId(train.number)} onMouseLeave={() => setHoveredId(null)} onFocus={() => setHoveredId(train.number)} onBlur={() => setHoveredId(null)} onClick={() => selectTrain(train)} className="train-row group h-auto w-full items-stretch rounded-md border-l-2 border-l-transparent px-3 py-4 text-left whitespace-normal">
             <span className="flex w-full flex-col gap-3">
-              <span className="flex items-center justify-between gap-2"><span className="flex items-baseline gap-2"><span className="text-base font-semibold tracking-tight tabular-nums">№ {train.number}</span>{TRAIN_INFO[train.number] && <span className="text-[11px] font-normal text-muted-foreground">{TRAIN_INFO[train.number]!.brand}</span>}</span><span className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium ${statusClasses[train.status]}`}><span className="size-1.5 rounded-full" />{statusLabels[train.status]}</span></span>
+              <span className="flex items-center justify-between gap-2"><span className="flex items-baseline gap-2"><span className="text-base font-semibold tracking-tight tabular-nums">№ {train.number}</span>{TRAIN_INFO[train.number] && <span className="text-[11px] font-normal text-muted-foreground">{TRAIN_INFO[train.number]!.brand}</span>}{train.kind && <span className="flex items-center gap-0.5 text-[11px] font-normal text-muted-foreground"><Zap className="size-3" />Elektr</span>}</span>{train.cancelled ? <span className="flex items-center gap-1.5 rounded-full bg-red-500/15 px-2 py-1 text-[11px] font-medium text-red-700 dark:text-red-300"><TriangleAlert className="size-3" />Bekor qilingan</span> : <span className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium ${statusClasses[train.status]}`}><span className="size-1.5 rounded-full" />{statusLabels[train.status]}</span>}</span>
               <span className="flex items-center gap-2 text-[13px] font-semibold"><span className="min-w-0 flex-1">{train.from}</span><ArrowRight className="size-3.5 shrink-0 text-primary" /><span className="min-w-0 flex-1 text-right">{train.to}</span></span>
-              <span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground tabular-nums"><Clock3 className="size-3.5" />{train.status === "running" ? `Kelish: ${formatDateTime(train.arrival)}` : train.status === "waiting" ? `Jo‘nash: ${formatDateTime(train.departure)}` : `Keyingi jo‘nash: ${formatDateTime(train.nextDeparture)}`}</span>
+              <span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground tabular-nums"><Clock3 className="size-3.5 shrink-0" /><span className="min-w-0 flex-1">{train.status === "running" ? `Kelish: ${formatDateTime(train.arrival)}` : train.status === "waiting" ? `Jo‘nash: ${formatDateTime(train.departure)}` : `Keyingi jo‘nash: ${formatDateTime(train.nextDeparture)}`}</span>{train.price && <span className="shrink-0 font-medium text-foreground">{train.price.toLocaleString("ru-RU").replace(/\s| /g, " ")} so‘m</span>}</span>
             </span>
           </Button>)}
         </div></ScrollArea>
@@ -195,12 +270,8 @@ export default function Home() {
           key={mapAttempt}
           ref={mapRef}
           network={network}
-          stations={STATIONS}
-          trains={visibleTrains.filter((train) => train.status === "running" || status !== "all" || train.number === selectedId).flatMap((train) => {
-            if (train.status === "running" && routes[train.number]) return [{ number: train.number, status: train.status, ...pointAlong(routes[train.number]!, train.progress) }];
-            const station = STATIONS.find((item) => item.name === train.from);
-            return station ? [{ number: train.number, status: train.status, coordinates: station.coordinates, bearing: 0 }] : [];
-          })}
+          stations={mapStations}
+          trains={focused ? trainMarker(focused) : visibleTrains.filter((train) => train.status === "running" || status !== "all" || train.number === selectedId).flatMap(trainMarker)}
           selectedRoute={selectedRoute}
           selectedProgress={selected?.progress ?? 0}
           selectedStationId={stationId}
@@ -225,17 +296,18 @@ export default function Home() {
         <div className="floating-surface flex flex-col rounded-lg p-1"><Button variant="ghost" size="icon" className="size-10" aria-label="Xaritani yaqinlashtirish" onClick={() => mapRef.current?.zoomIn()}><Plus className="size-4" /></Button><Button variant="ghost" size="icon" className="size-10" aria-label="Xaritani uzoqlashtirish" onClick={() => mapRef.current?.zoomOut()}><Minus className="size-4" /></Button></div>
         <Button variant="ghost" size="icon" className="floating-surface size-12 rounded-lg" aria-label="O‘zbekistonni ko‘rsatish" onClick={() => mapRef.current?.reset()}><LocateFixed className="size-4" /></Button>
       </div>
-      <div className="absolute bottom-28 left-3 z-10 md:bottom-10 md:left-[360px]">
-        {selected && <div className="floating-surface mt-2 flex gap-3 rounded-lg px-3 py-2 text-[11px]"><span className="flex items-center gap-1.5"><span className="h-0.5 w-3 bg-muted-foreground" />Bosib o‘tilgan</span><span className="flex items-center gap-1.5"><span className="h-0.5 w-3 bg-primary" />Qolgan yo‘l</span></div>}
+      <div className="absolute top-[88px] left-3 z-10 md:top-auto md:bottom-10 md:left-[360px]">
+        {selected && <div className="floating-surface flex gap-3 rounded-lg px-3 py-2 text-[11px] md:mt-2"><span className="flex items-center gap-1.5"><span className="h-0.5 w-3 bg-muted-foreground" />Bosib o‘tilgan</span><span className="flex items-center gap-1.5"><span className="h-0.5 w-3 bg-primary" />Qolgan yo‘l</span></div>}
       </div>
 
       {mapStatus !== "ready" && <div role={mapStatus === "error" ? "alert" : "status"} className="floating-surface absolute top-28 left-3 z-10 w-[min(240px,65vw)] rounded-xl p-4 md:left-[360px]">{mapStatus === "loading" ? <><p className="text-sm">Xarita yuklanmoqda</p><div aria-hidden="true" className="mt-3 space-y-2 motion-safe:animate-pulse"><div className="h-2 w-4/5 rounded bg-muted" /><div className="h-2 w-3/5 rounded bg-muted" /></div></> : <><p className="text-sm">Xaritani yuklab bo‘lmadi</p><Button variant="outline" className="mt-3 h-10" onClick={() => { setMapStatus("loading"); setMapAttempt((attempt) => attempt + 1); }}>Qayta urinish</Button></>}</div>}
 
-      <Sheet open={isMobile && listOpen} onOpenChange={setListOpen}><SheetContent side="bottom" showCloseButton={false} className="floating-surface h-[62dvh]! gap-0 rounded-t-2xl"><SheetHeader className="sr-only"><SheetTitle>Poyezdlar ro‘yxati</SheetTitle><SheetDescription>Poyezdni tanlang</SheetDescription></SheetHeader><div className="mx-auto mt-2 h-1 w-8 rounded-full bg-border" /><SheetClose render={<Button variant="ghost" size="icon" className="absolute top-2 right-2 size-10" aria-label="Ro‘yxatni yopish" />}><X className="size-4" /></SheetClose>{isMobile && trainList}</SheetContent></Sheet>
+      <Sheet open={isMobile && listOpen} onOpenChange={setListOpen} modal={false}><SheetContent side="bottom" showCloseButton={false} className="floating-surface gap-0 rounded-t-2xl" style={sheetStyle}><SheetHeader className="sr-only"><SheetTitle>Poyezdlar ro‘yxati</SheetTitle><SheetDescription>Poyezdni tanlang</SheetDescription></SheetHeader>{sheetHandle}<SheetClose render={<Button variant="ghost" size="icon" className="absolute top-2 right-2 size-10" aria-label="Ro‘yxatni yopish" />}><X className="size-4" /></SheetClose>{isMobile && trainList}</SheetContent></Sheet>
       <Sheet open={Boolean(activeStation)} onOpenChange={(open) => { if (!open) setStationId(null); }} modal={false}>
-        <SheetContent side={isMobile ? "bottom" : "right"} showCloseButton={false} className={isMobile ? "h-[58dvh]! gap-0 overflow-hidden rounded-t-3xl border-border bg-background" : "inset-y-24! right-5! h-auto! w-[390px]! max-w-[390px]! gap-0 overflow-hidden rounded-2xl border-border bg-background shadow-xl"}>
+        <SheetContent side={isMobile ? "bottom" : "right"} showCloseButton={false} style={sheetStyle} className={isMobile ? "gap-0 overflow-hidden rounded-t-3xl border-border bg-background" : "inset-y-24! right-5! h-auto! w-[390px]! max-w-[390px]! gap-0 overflow-hidden rounded-2xl border-border bg-background shadow-xl"}>
           {activeStation && <>
-            <SheetHeader className="gap-0 px-5 pt-4 pb-4">
+            {isMobile && sheetHandle}
+            <SheetHeader className={`gap-0 px-5 pb-4 ${isMobile ? "pt-1" : "pt-4"}`}>
               <div className="mb-5 flex items-center justify-between">
                 <SheetClose render={<Button variant="ghost" size="sm" className="-ml-2 gap-1.5 text-muted-foreground" />}><ArrowLeft className="size-4" />Orqaga</SheetClose>
                 <Badge className="h-7 px-3">Bekat</Badge>
@@ -251,11 +323,10 @@ export default function Home() {
               </div> : <div className="flex aspect-video items-center justify-center rounded-2xl bg-muted text-muted-foreground"><TrainFront className="size-10" /><span className="sr-only">Bekat rasmi mavjud emas</span></div>}
               <Card className="gap-3 rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center justify-between"><h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bugungi qatnovlar</h3><Badge variant="secondary">{stationServices.length}</Badge></div>
-                {stationServices.length ? <div className="space-y-2">{stationServices.map(({ train, time }) => {
-                  const departure = train.from === activeStation.name;
+                {stationServices.length ? <div className="space-y-2">{stationServices.map(({ train, time, kind }) => {
                   return <Button key={`${train.number}-${time}`} variant="ghost" className="h-auto w-full justify-start rounded-xl border bg-muted/40 px-3 py-3 text-left" onClick={() => { setStationId(null); selectTrain(train); }}>
                     <span className="mr-3 w-11 shrink-0 text-base font-semibold tabular-nums">{detailTime.format(time)}</span>
-                    <span className="min-w-0 flex-1"><span className="flex items-center gap-2"><Badge className="h-5 px-2">{train.number}</Badge><span className="text-[11px] text-muted-foreground">{departure ? "Jo‘naydi" : "Keladi"}</span></span><span className="mt-1 block truncate text-xs font-normal text-muted-foreground">{departure ? train.to : train.from}</span></span>
+                    <span className="min-w-0 flex-1"><span className="flex items-center gap-2"><Badge className="h-5 px-2">{train.number}</Badge><span className="text-[11px] text-muted-foreground">{kind === "departure" ? "Jo‘naydi" : kind === "arrival" ? "Keladi" : "To‘xtaydi"}</span></span><span className="mt-1 block truncate text-xs font-normal text-muted-foreground">{kind === "stop" ? `${train.from} → ${train.to}` : kind === "departure" ? train.to : train.from}</span></span>
                     <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
                   </Button>;
                 })}</div> : <p className="py-5 text-center text-sm text-muted-foreground">Bugun qatnov yo‘q</p>}
@@ -265,17 +336,26 @@ export default function Home() {
         </SheetContent>
       </Sheet>
       <Sheet open={detailsOpen} onOpenChange={setDetailsOpen} modal={false}>
-        <SheetContent side={isMobile ? "bottom" : "right"} showCloseButton={false} className={isMobile ? "h-[58dvh]! gap-0 overflow-hidden rounded-t-3xl border-border bg-background" : "inset-y-24! right-5! h-auto! w-[390px]! max-w-[390px]! gap-0 overflow-hidden rounded-2xl border-border bg-background shadow-xl"}>
+        <SheetContent side={isMobile ? "bottom" : "right"} showCloseButton={false} style={sheetStyle} className={isMobile ? "gap-0 overflow-hidden rounded-t-3xl border-border bg-background" : "inset-y-24! right-5! h-auto! w-[390px]! max-w-[390px]! gap-0 overflow-hidden rounded-2xl border-border bg-background shadow-xl"}>
           {selected && <>
-            <SheetHeader className="gap-0 px-5 pt-4 pb-5">
+            {isMobile && sheetHandle}
+            <SheetHeader className={`gap-0 px-5 pb-5 ${isMobile ? "pt-1" : "pt-4"}`}>
               <div className="mb-5 flex items-center justify-between gap-3">
                 <SheetClose render={<Button variant="ghost" size="sm" className="-ml-2 gap-1.5 text-muted-foreground" />}><ArrowLeft className="size-4" />Orqaga</SheetClose>
-                {info && <Badge className="h-7 px-3">{info.brand}</Badge>}
+                {(info || selected.kind) && <Badge className="h-7 gap-1 px-3">{selected.kind && <Zap className="size-3.5" />}{info?.brand ?? "Elektropoyezd"}</Badge>}
               </div>
-              <div className="flex items-center justify-between gap-3"><SheetTitle className="text-4xl font-semibold tracking-tight tabular-nums">№ {selected.number}</SheetTitle><span className={`flex h-7 items-center gap-1.5 rounded-full px-3 text-xs font-medium ${statusClasses[selected.status]}`}><span className="size-1.5 rounded-full" />{statusLabels[selected.status]}</span></div>
-              <SheetDescription className="mt-2 text-xs">{formatDays(selected.departDays)} · Toshkent vaqti</SheetDescription>
+              <div className="flex items-center justify-between gap-3"><SheetTitle className="text-4xl font-semibold tracking-tight tabular-nums">№ {selected.number}</SheetTitle>{selected.cancelled ? <span className="flex h-7 items-center gap-1.5 rounded-full bg-red-500/15 px-3 text-xs font-medium text-red-700 dark:text-red-300"><TriangleAlert className="size-3.5" />Bekor qilingan</span> : <span className={`flex h-7 items-center gap-1.5 rounded-full px-3 text-xs font-medium ${statusClasses[selected.status]}`}><span className="size-1.5 rounded-full" />{statusLabels[selected.status]}</span>}</div>
+              <SheetDescription render={<div />} className="mt-3 text-xs">
+                <div className="flex flex-wrap items-center gap-1" aria-label={`Qatnov kunlari: ${formatDays(selected.departDays)}`}>
+                  {selected.departDays.kind === "weekdays"
+                    ? [[1, "Du"], [2, "Se"], [3, "Chor"], [4, "Pay"], [5, "Ju"], [6, "Shan"], [0, "Yak"]].map(([day, label]) => <span key={day} className={`flex h-7 min-w-9 items-center justify-center rounded-md px-1.5 text-[11px] ${selected.departDays.kind === "weekdays" && selected.departDays.days.includes(day as number) ? "bg-accent font-semibold text-accent-foreground" : "text-muted-foreground/50"}`}>{label}</span>)
+                    : <span className="flex h-7 items-center rounded-md bg-accent px-2.5 text-[11px] font-semibold text-accent-foreground">{formatDays(selected.departDays)}</span>}
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">Vaqtlar Toshkent vaqti bilan{selected.price ? ` · Chipta ${selected.price.toLocaleString("ru-RU").replace(/\s| /g, " ")} so‘m` : ""}</p>
+              </SheetDescription>
             </SheetHeader>
             <ScrollArea className="min-h-0 flex-1"><div className="space-y-4 px-4 pb-5">
+              {selected.cancelled && <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-700 dark:text-red-300"><TriangleAlert className="mt-0.5 size-4 shrink-0" /><div><p className="text-sm font-semibold">Reys bekor qilingan</p><p className="mt-0.5 text-xs">{selected.cancelled}</p></div></div>}
               <Card className="gap-4 rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center justify-between text-[10px] font-medium uppercase tracking-wider text-muted-foreground"><span>Jo‘nash</span><span>Kelish</span></div>
                 <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
@@ -293,18 +373,26 @@ export default function Home() {
               </div>
               <Card className="gap-4 rounded-2xl p-4 shadow-sm">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bekatlar</h3>
-                <div className="flex items-start gap-2 rounded-xl bg-accent px-3 py-2.5 text-accent-foreground"><MapPin className="mt-0.5 size-4 shrink-0" /><p className="text-xs leading-relaxed">{selected.status === "running" ? `${detailStops[currentStopIndex]?.name} → ${detailStops[currentStopIndex + 1]?.name ?? selected.to}` : selected.status === "arrived" ? selected.to : selected.from}</p></div>
+
                 <ol>{detailStops.map((stop, index) => {
                   const passed = stop.progress !== null && selected.progress >= stop.progress;
                   const active = index === currentStopIndex;
                   return <li key={`${stop.name}-${index}`} className="grid grid-cols-[48px_20px_1fr] gap-2.5">
-                    <span className={`pt-3 text-xs tabular-nums ${passed ? "text-foreground" : "text-muted-foreground"}`}>{stop.time === null ? "—" : detailTime.format(stop.time)}</span>
+                    <span className={`pt-3 text-xs tabular-nums ${passed ? "text-foreground" : "text-muted-foreground"}`}>{detailTime.format(stop.arrival)}</span>
                     <div className="relative flex justify-center">{index < detailStops.length - 1 && <span className={`absolute top-5 bottom-0 w-px ${selected.progress >= (detailStops[index + 1].progress ?? Infinity) ? "bg-primary" : "bg-border"}`} />}<span className={`relative z-10 mt-3.5 size-3 rounded-full border-2 ${active ? "border-primary bg-card ring-4 ring-primary/15" : passed ? "border-primary bg-primary" : "border-input bg-card"}`} /></div>
-                    <div className={`mb-3 min-h-14 rounded-xl border px-3 py-2.5 ${active ? "border-primary/30 bg-accent" : "border-transparent"}`}><p className={`text-[13px] leading-snug ${active ? "font-medium text-accent-foreground" : "text-foreground"}`}>{stop.name}</p>{index === 0 || index === detailStops.length - 1 ? <p className="mt-1 text-[10px] text-muted-foreground">{index === 0 ? "Jo‘nash bekati" : "Oxirgi bekat"}</p> : null}</div>
+                    <div className={`mb-3 min-h-14 rounded-xl border px-3 py-2.5 ${active ? "border-primary/30 bg-accent" : "border-transparent"}`}><p className={`text-[13px] leading-snug ${active ? "font-medium text-accent-foreground" : "text-foreground"}`}>{stop.name}</p>{index === 0 || index === detailStops.length - 1 ? <p className="mt-1 text-[10px] text-muted-foreground">{index === 0 ? "Jo‘nash bekati" : "Oxirgi bekat"}</p> : <p className="mt-1 text-[10px] text-muted-foreground">To‘xtash: {stop.dwell} daq.</p>}</div>
                   </li>;
                 })}</ol>
+                {detailStops.length > 2 && !selected.kind && <p className="text-[10px] text-muted-foreground">Oraliq bekatlardagi vaqtlar taxminiy.</p>}
               </Card>
-              {selected.status !== "running" && <div className="flex items-center justify-between gap-3 px-1 text-xs"><span className="text-muted-foreground">Keyingi jo‘nash</span><span className="font-medium tabular-nums">{formatDateTime(selected.nextDeparture)}</span></div>}
+              {selected.status !== "running" && <Card className="flex-row items-center gap-3 rounded-2xl p-4 shadow-sm">
+                <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground"><CalendarClock className="size-5" /></span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{selected.status === "waiting" ? "Jo‘nashgacha" : "Keyingi jo‘nash"}</p>
+                  <p className="mt-0.5 text-lg font-semibold tracking-tight tabular-nums">{untilNext}</p>
+                </div>
+                <div className="text-right"><p className="text-sm font-semibold tabular-nums">{detailTime.format(selected.nextDeparture)}</p><p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">{detailDate.format(selected.nextDeparture)}</p></div>
+              </Card>}
               <p className="px-1 text-[10px] text-muted-foreground">{selected.number === "730F" && " * Kelish vaqti tasdiqlanmagan."}</p>
             </div></ScrollArea>
           </>}

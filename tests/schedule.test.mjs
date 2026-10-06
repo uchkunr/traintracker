@@ -18,9 +18,9 @@ const entry = (number) => SCHEDULE.find((row) => row.number === number);
 const time = (date) => Date.parse(`${date}+05:00`);
 const state = (number, date) => getServiceState(entry(number), time(date));
 
-test('67 unique services and valid station names', () => {
-  assert.equal(SCHEDULE.length, 67);
-  assert.equal(new Set(SCHEDULE.map((row) => row.number)).size, 67);
+test('67 intercity services, unique numbers and valid station names', () => {
+  assert.equal(SCHEDULE.filter((row) => !row.kind).length, 67);
+  assert.equal(new Set(SCHEDULE.map((row) => row.number)).size, SCHEDULE.length);
   const stations = new Set(rail.STATIONS.map((station) => station.name));
   for (const row of SCHEDULE) for (const station of [row.from, ...row.via, row.to]) assert.ok(stations.has(station), station);
 });
@@ -103,7 +103,7 @@ test('Tashkent terminals are independently sourced and used verbatim', () => {
 });
 // OSM stores the 19 km Kamchiq tunnel and a 24 km straight desert rail as single edges.
 test('static real-rail geometry covers all domestic and Dushanbe services without city-to-city chords', () => {
-  for (const row of SCHEDULE.filter((s)=>![s.from,s.to].some((n)=>['Moskva','Qozon','Volgograd','Olmaota'].includes(n)))) {
+  for (const row of SCHEDULE.filter((s)=>!s.kind&&![s.from,s.to].some((n)=>['Moskva','Qozon','Volgograd','Olmaota'].includes(n)))) {
     const route=routes[row.number]; assert.ok(route,row.number); assert.ok(route.coordinates.length>50);
     assert.deepEqual(rail.pointAlong(route,0).coordinates,route.coordinates[0]);
     const end=rail.pointAlong(route,1).coordinates; assert.ok(Math.abs(end[0]-route.coordinates.at(-1)[0])<1e-8);

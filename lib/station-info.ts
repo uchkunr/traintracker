@@ -25,41 +25,41 @@ export const STATION_INFO: Record<string, StationInfo> = {
   "Toshkent Janubiy": {
     ...uzbekistan,
     image: {
-      src: "https://uzrailpass.uz/uploads/images/stations/org/nnmocTEyyuJK.jpg",
+      src: "/stations/toshkent-janubiy.jpg",
       alt: "Toshkent Janubiy vokzali",
-      author: "UzRailPass",
+      author: "O‘zbekiston Temir Yo‘llari (ticket.elektropoyezd.uz)",
       license: "Manba sayti",
-      sourceUrl: "https://uzrailpass.uz/uploads/images/stations/org/nnmocTEyyuJK.jpg",
+      sourceUrl: "https://ticket.elektropoyezd.uz/storage/assets/regions/tashkent.jpg",
     },
   },
   Samarqand: {
     ...uzbekistan,
     image: {
-      src: "/stations/samarqand.webp",
+      src: "/stations/samarqand.jpg",
       alt: "Samarqand temiryo‘l vokzali",
-      author: "Akhemen",
-      license: "CC BY-SA 4.0",
-      sourceUrl: "https://commons.wikimedia.org/wiki/File:Samarkand_Railway_Station.jpg",
+      author: "O‘zbekiston Temir Yo‘llari (ticket.elektropoyezd.uz)",
+      license: "Manba sayti",
+      sourceUrl: "https://ticket.elektropoyezd.uz/storage/assets/regions/samarqand.jpg",
     },
   },
   Buxoro: {
     ...uzbekistan,
     image: {
-      src: "https://www.advantour.com/img/uzbekistan/bukhara/railway-station-banner.jpg",
+      src: "/stations/buxoro.jpg",
       alt: "Buxoro temiryo‘l vokzali",
-      author: "Advantour",
+      author: "O‘zbekiston Temir Yo‘llari (ticket.elektropoyezd.uz)",
       license: "Manba sayti",
-      sourceUrl: "https://www.advantour.com/img/uzbekistan/bukhara/railway-station-banner.jpg",
+      sourceUrl: "https://ticket.elektropoyezd.uz/storage/assets/regions/buxoro.jpg",
     },
   },
   Qarshi: {
     ...uzbekistan,
     image: {
-      src: "/stations/qarshi.webp",
+      src: "/stations/qarshi.jpg",
       alt: "Qarshi temiryo‘l vokzali",
-      author: "Mrjavokh1r",
-      license: "CC BY-SA 4.0",
-      sourceUrl: "https://commons.wikimedia.org/wiki/File:Karshi_railway_station.jpg",
+      author: "O‘zbekiston Temir Yo‘llari (ticket.elektropoyezd.uz)",
+      license: "Manba sayti",
+      sourceUrl: "https://ticket.elektropoyezd.uz/storage/assets/regions/qashqadaryo.jpg",
     },
   },
   Andijon: {
@@ -85,11 +85,11 @@ export const STATION_INFO: Record<string, StationInfo> = {
   "Qo'qon": {
     ...uzbekistan,
     image: {
-      src: "https://cdn.uza.uz/2023/09/20/17/09/zFZRVScSU8rzQVocypyzY9OJ7Wzcva66_normal.jpg",
+      src: "/stations/qoqon.jpg",
       alt: "Qo‘qon temiryo‘l vokzali",
-      author: "O‘zA",
+      author: "O‘zbekiston Temir Yo‘llari (ticket.elektropoyezd.uz)",
       license: "Manba sayti",
-      sourceUrl: "https://uza.uz/en/posts/participants-of-the-international-festival-of-handicrafts-solemnly-welcomed-in-kokand_522147",
+      sourceUrl: "https://ticket.elektropoyezd.uz/storage/assets/regions/fargona.jpg",
     },
   },
   "Marg‘ilon": {
@@ -115,11 +115,11 @@ export const STATION_INFO: Record<string, StationInfo> = {
   Termiz: {
     ...uzbekistan,
     image: {
-      src: "https://uzrailpass.uz/uploads/images/stations/org/shByuR5l1CVZ.webp",
+      src: "/stations/termiz.jpg",
       alt: "Termiz temiryo‘l vokzali",
-      author: "O‘ZTEMIRYO‘LYO‘LOVCHI",
+      author: "O‘zbekiston Temir Yo‘llari (ticket.elektropoyezd.uz)",
       license: "Manba sayti",
-      sourceUrl: "https://uzrailpass.uz/vip/termiz-temir-yol-stantsiyasi",
+      sourceUrl: "https://ticket.elektropoyezd.uz/storage/assets/regions/surxandaryo.jpg",
     },
   },
   Sariosiyo: {
@@ -132,25 +132,34 @@ export const STATION_INFO: Record<string, StationInfo> = {
       sourceUrl: "https://uzrailpass.uz/vip/sariosiyo-temir-yol-vokzali",
     },
   },
-  "Qo'ng'irot": uzbekistan,
+  "Qo'ng'irot": {
+    ...uzbekistan,
+    image: {
+      src: "/stations/qongirot.jpg",
+      alt: "Qo‘ng‘irot temiryo‘l vokzali",
+      author: "O‘zbekiston Temir Yo‘llari (ticket.elektropoyezd.uz)",
+      license: "Manba sayti",
+      sourceUrl: "https://ticket.elektropoyezd.uz/storage/assets/regions/qongirot.jpg",
+    },
+  },
   Xiva: {
     ...uzbekistan,
     image: {
-      src: "https://dynamic-media-cdn.tripadvisor.com/media/photo-o/2d/ac/04/96/caption.jpg?w=1200&h=-1&s=1",
+      src: "/stations/xiva.jpg",
       alt: "Xiva temiryo‘l vokzali",
-      author: "Tripadvisor",
+      author: "O‘zbekiston Temir Yo‘llari (ticket.elektropoyezd.uz)",
       license: "Manba sayti",
-      sourceUrl: "https://dynamic-media-cdn.tripadvisor.com/media/photo-o/2d/ac/04/96/caption.jpg?w=1200&h=-1&s=1",
+      sourceUrl: "https://ticket.elektropoyezd.uz/storage/assets/regions/xiva.jpg",
     },
   },
   Urganch: {
     ...uzbekistan,
     image: {
-      src: "https://yuz.uz/file/news/5403bf43f2a7597d7cf10a1c324bc0e7.jpg",
+      src: "/stations/urganch.jpg",
       alt: "Urganch temiryo‘l vokzali",
-      author: "Yuz.uz",
+      author: "O‘zbekiston Temir Yo‘llari (ticket.elektropoyezd.uz)",
       license: "Manba sayti",
-      sourceUrl: "https://yuz.uz/file/news/5403bf43f2a7597d7cf10a1c324bc0e7.jpg",
+      sourceUrl: "https://ticket.elektropoyezd.uz/storage/assets/regions/urganch.jpg",
     },
   },
   Shovot: uzbekistan,
