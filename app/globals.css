@@ -151,9 +151,6 @@
     backdrop-filter: blur(16px);
     box-shadow: var(--shadow-surface);
   }
-  .train-row { border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent); }
-  .train-row:hover, .train-row:focus-visible, .train-row[data-highlighted="true"] { background: var(--accent); }
-  .train-row:active { background: var(--secondary); }
   .train-marker { color: var(--primary); }
   .train-marker:hover, .train-marker[data-highlighted="true"], .train-marker[data-selected="true"] { background: var(--card); box-shadow: 0 0 0 1px var(--primary), var(--shadow-surface); }
   .train-marker-solid:hover, .train-marker-solid[data-highlighted="true"], .train-marker-solid[data-selected="true"] { color: var(--primary-foreground); background: var(--primary); }

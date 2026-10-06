@@ -1,16 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowUpRight, TrainFront } from "lucide-react";
-import { initialLang, type Lang } from "@/lib/i18n";
+import { useLang } from "@/lib/use-lang";
 
 const COPY = {
   uz: {
     back: "Xaritaga qaytish",
     langLabel: "Til",
     title: "Loyiha haqida",
-    intro: "TrainTracker.uz O‘zbekiston poyezdlarini xaritada ko‘rsatadi. U turistlarga yo‘nalishni tushunish, bekatlarni ko‘rish va safarni oldindan rejalashtirishda yordam berish uchun yaratilgan.",
+    intro: "Poyezd jadvali odatda vaqtlar ro‘yxati bo‘lib, yo‘nalishni tasavvur qilish qiyin. TrainTracker.uz shu jadvalni xaritaga joylaydi: poyezd hozir qayerda, qaysi bekatlardan o‘tadi va qachon yetib boradi, hammasi bir qarashda ko‘rinadi.",
     dataTitle: "Ma’lumotlar",
     sources: [
       ["Jadval va narxlar", "eticket.railway.uz", "https://eticket.railway.uz/"],
@@ -20,14 +19,14 @@ const COPY = {
     ],
     dataNote: "Ma’lumotlar 2026-yil 6-oktabr holatida olingan.",
     liveTitle: "Real vaqt",
-    live: "Poyezdlarda GPS kuzatuv yo‘q, shuning uchun joylashuv jadvaldan hisoblanadi va har soniyada yangilanadi.",
+    live: "Poyezdlarda GPS kuzatuvi yo‘q. Shuning uchun joylashuv jadvaldan hisoblab chiqiladi va har soniyada yangilanadi.",
     steps: [
-      "Reysning jo‘nash va kelish vaqti olinadi (Toshkent vaqti, UTC+5).",
-      "Hozirgi vaqt shu oraliqning qaysi ulushida ekani topiladi.",
-      "Poyezd rels chizig‘ining aynan shu ulushiga qo‘yiladi.",
+      "Reysning jo‘nash va yetib borish vaqti olinadi (Toshkent vaqti, UTC+5).",
+      "Hozirgi vaqt shu oraliqning qancha qismi o‘tganini ko‘rsatadi.",
+      "Poyezd rels chizig‘ining xuddi shu joyiga qo‘yiladi.",
     ],
-    formula: "ulush = (hozir - jo‘nash) / davomiylik",
-    note: "Bu taxminiy joylashuv, kechikishlar hisobga olinmaydi. Chipta olishdan oldin eticket.railway.uz da tekshiring. Loyiha mustaqil va O‘zbekiston temir yo‘llari bilan rasman bog‘liq emas.",
+    formula: "o‘tgan ulush = (hozir - jo‘nash) / davomiylik",
+    note: "Joylashuv taxminiy: kechikishlar hisobga olinmaydi. Chipta olishdan oldin eticket.railway.uz saytida tekshirib oling. Loyiha mustaqil va O‘zbekiston temir yo‘llari bilan rasmiy aloqasi yo‘q.",
     authorTitle: "Muallif",
     contact: "Bog‘lanish",
   },
@@ -35,7 +34,7 @@ const COPY = {
     back: "Back to the map",
     langLabel: "Language",
     title: "About",
-    intro: "TrainTracker.uz shows Uzbekistan’s trains on a map. It is built to help tourists understand a route, see the stations and plan a trip in advance.",
+    intro: "A train timetable is usually a list of times, which makes a route hard to picture. TrainTracker.uz puts that timetable on a map, so you can see where a train is now, which stations it passes and when it arrives.",
     dataTitle: "Data",
     sources: [
       ["Timetable and fares", "eticket.railway.uz", "https://eticket.railway.uz/"],
@@ -45,14 +44,14 @@ const COPY = {
     ],
     dataNote: "Data was collected on 6 October 2026.",
     liveTitle: "Real time",
-    live: "Trains are not tracked by GPS, so the position is calculated from the timetable and refreshed every second.",
+    live: "Trains are not tracked by GPS, so the position is worked out from the timetable and updated every second.",
     steps: [
-      "The service’s departure and arrival times are taken (Tashkent time, UTC+5).",
-      "We find how far through that interval the current time is.",
-      "The train is placed at the same share of the rail line.",
+      "We take the service’s departure and arrival times (Tashkent time, UTC+5).",
+      "The current time tells us how much of that interval has passed.",
+      "The train is drawn at the same point along the rail line.",
     ],
-    formula: "share = (now - departure) / duration",
-    note: "This is an estimated position and delays are not reflected. Check eticket.railway.uz before buying a ticket. The project is independent and not officially affiliated with Uzbekistan Railways.",
+    formula: "progress = (now - departure) / duration",
+    note: "The position is an estimate and delays are not included. Check eticket.railway.uz before you buy a ticket. The project is independent and has no official link with Uzbekistan Railways.",
     authorTitle: "Author",
     contact: "Contact",
   },
@@ -68,15 +67,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function AboutContent() {
-  const [lang, setLang] = useState<Lang>("uz");
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => setLang(initialLang()));
-    return () => cancelAnimationFrame(frame);
-  }, []);
-  useEffect(() => {
-    document.documentElement.lang = lang;
-    try { localStorage.setItem("traintracker-lang", lang); } catch { /* The language choice still applies for this visit. */ }
-  }, [lang]);
+  const [lang, setLang] = useLang();
 
   const c = COPY[lang];
 

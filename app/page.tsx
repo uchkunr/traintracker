@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
-  ArrowRight,
+  ChevronRight,
   CalendarClock,
   Clock3,
   Gauge,
@@ -62,14 +62,13 @@ import {
   type ScheduledTrain,
 } from "@/lib/schedule";
 import {
-  initialLang,
   placeName,
   translate,
-  type Lang,
   type MessageKey,
 } from "@/lib/i18n";
 import { STATION_INFO } from "@/lib/station-info";
 import { TRAIN_INFO } from "@/lib/trains-info";
+import { useLang } from "@/lib/use-lang";
 import { estimateStops, stopNames } from "@/lib/train-stops";
 import { ELECTRIC_ROUTES } from "@/lib/electric-trains";
 
@@ -88,6 +87,9 @@ const detailDate = new Intl.DateTimeFormat("uz", {
 
 const SHEET_TRANSITION =
   "translate 420ms cubic-bezier(0.32, 0.72, 0, 1), transform 420ms cubic-bezier(0.32, 0.72, 0, 1), opacity 250ms ease-out, height 380ms cubic-bezier(0.32, 0.72, 0, 1)";
+type TrainType = "fast" | "regular" | "electric";
+const trainType = (train: ScheduledTrain): TrainType =>
+  train.kind ? "electric" : TRAIN_INFO[train.number] ? "fast" : "regular";
 const statusIcon = {
   running: Navigation,
   waiting: Hourglass,
@@ -145,7 +147,7 @@ export default function Home() {
       now === null ? [] : SCHEDULE.map((train) => getServiceState(train, now)),
     [now],
   );
-  const [lang, setLang] = useState<Lang>("uz");
+  const [lang, setLang] = useLang();
   const t = (key: MessageKey, vars?: Record<string, string | number>) =>
     translate(lang, key, vars);
   const place = (name: string) => placeName(name, lang);
@@ -161,10 +163,8 @@ export default function Home() {
       ? rule.days.map((day) => t(`weekday.${day}` as MessageKey)).join(", ")
       : t(`days.${rule.kind}` as MessageKey);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("all");
-  const [category, setCategory] = useState<"all" | "intercity" | "electric">(
-    "all",
-  );
+  const [status, setStatus] = useState("running");
+  const [category, setCategory] = useState<TrainType | "all">("all");
   const [region, setRegion] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -172,12 +172,18 @@ export default function Home() {
   const [listOpen, setListOpen] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [stationId, setStationId] = useState<string | null>(null);
+  const [stationViewState, setStationViewState] = useState<{
+    id: string | null;
+    tab: string;
+    type: string;
+  }>({ id: null, tab: "departure", type: "all" });
   const [mapStatus, setMapStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
   const [mapAttempt, setMapAttempt] = useState(0);
   const [sheetH, setSheetH] = useState<number | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
   const [cookieChoice, setCookieChoice] = useState<string | null>("pending");
   const drag = useRef<{
     active: boolean;
@@ -259,18 +265,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => setLang(initialLang()));
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.lang = lang;
     document.title = translate(lang, "meta.title");
-    try {
-      localStorage.setItem("traintracker-lang", lang);
-    } catch {
-      /* The language choice still applies for this visit. */
-    }
   }, [lang]);
 
   useEffect(() => {
@@ -316,6 +311,15 @@ export default function Home() {
     }
     setCookieChoice(choice);
   };
+
+  useEffect(() => {
+    if (!photoOpen) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPhotoOpen(false);
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [photoOpen]);
 
   const sheetStyle = isMobile
     ? { height: sheetH ?? "58dvh", transition: SHEET_TRANSITION }
@@ -430,8 +434,7 @@ export default function Home() {
         : train.nextDeparture;
   const categoryTrains = trains.filter(
     (train) =>
-      (category === "all" ||
-        (category === "electric") === Boolean(train.kind)) &&
+      (category === "all" || trainType(train) === category) &&
       (category !== "electric" || region === "all" || train.region === region),
   );
   const matchingTrains = categoryTrains.filter((train) =>
@@ -457,17 +460,14 @@ export default function Home() {
     arrived: matchingTrains.filter((train) => train.status === "arrived")
       .length,
   } as Record<string, number>;
-  const filtersCount = [status, category, region].filter(
-    (value) => value !== "all",
-  ).length;
-  const filtersActive =
-    Boolean(query) ||
-    status !== "all" ||
-    category !== "all" ||
-    region !== "all";
+  const filtersCount =
+    Number(status !== "running") +
+    Number(category !== "all") +
+    Number(region !== "all");
+  const filtersActive = Boolean(query) || filtersCount > 0;
   function resetFilters() {
     setQuery("");
-    setStatus("all");
+    setStatus("running");
     setCategory("all");
     setRegion("all");
   }
@@ -524,31 +524,92 @@ export default function Home() {
   const activeStationInfo = activeStation
     ? STATION_INFO[activeStation.name]
     : undefined;
-  const stationServices = activeStation
-    ? trains
-        .flatMap<{
-          train: ScheduledTrain;
-          time: number;
-          kind: "departure" | "arrival" | "stop";
-        }>((train) => {
-          if (!train.runsToday) return [];
-          if (train.from === activeStation.name)
-            return [
-              { train, time: train.departure, kind: "departure" as const },
-            ];
-          if (train.to === activeStation.name)
-            return [{ train, time: train.arrival, kind: "arrival" as const }];
-          const stop = estimateStops(train)
-            .slice(1, -1)
-            .find((item) => item.name === activeStation.name);
-          return stop &&
-            now !== null &&
-            detailDate.format(stop.arrival) === detailDate.format(now)
-            ? [{ train, time: stop.arrival, kind: "stop" as const }]
-            : [];
-        })
-        .sort((a, b) => a.time - b.time)
-    : [];
+  // Departure board: a train that already passed is moved to its next run. A pass-through train
+  // appears under both arrivals (stop time) and departures (stop time + dwell).
+  const stationBoard = (() => {
+    if (!activeStation || now === null) return [];
+    return trains.flatMap<{
+      train: ScheduledTrain;
+      arrive: number | null;
+      depart: number | null;
+      dwell: number;
+      shifted: boolean;
+    }>((train) => {
+      const isFrom = train.from === activeStation.name;
+      const isTo = train.to === activeStation.name;
+      const stop =
+        isFrom || isTo
+          ? null
+          : estimateStops(train)
+              .slice(1, -1)
+              .find((item) => item.name === activeStation.name);
+      if (!isFrom && !isTo && !stop) return [];
+      let arrive = isFrom ? null : isTo ? train.arrival : stop!.arrival;
+      let depart = isTo
+        ? null
+        : isFrom
+          ? train.departure
+          : stop!.arrival + stop!.dwell * 60_000;
+      const first = (arrive ?? depart)!;
+      const shifted =
+        first < now - 60_000 && train.nextDeparture > train.departure;
+      if (shifted) {
+        const gap = train.nextDeparture - train.departure;
+        if (arrive !== null) arrive += gap;
+        if (depart !== null) depart += gap;
+      }
+      const upcoming = (value: number | null) =>
+        value !== null && value >= now - 60_000 && value <= now + 36 * 3_600_000;
+      return upcoming(first + (shifted ? train.nextDeparture - train.departure : 0)) ||
+        upcoming(arrive) ||
+        upcoming(depart)
+        ? [{ train, arrive, depart, dwell: stop?.dwell ?? 0, shifted }]
+        : [];
+    });
+  })();
+  const stationView =
+    stationViewState.id === stationId
+      ? stationViewState
+      : { id: stationId, tab: "departure", type: "all" };
+  const tabRows = (tab: string) =>
+    stationBoard
+      .map((row) => ({ ...row, time: tab === "arrival" ? row.arrive : row.depart }))
+      .filter(
+        (row): row is typeof row & { time: number } =>
+          row.time !== null &&
+          now !== null &&
+          row.time >= now - 60_000 &&
+          row.time <= now + 36 * 3_600_000,
+      )
+      .sort((x, y) => x.time - y.time);
+  const tabBoard = tabRows(stationView.tab);
+  const stationTypeCounts = {
+    all: tabBoard.length,
+    fast: tabBoard.filter(({ train }) => trainType(train) === "fast").length,
+    regular: tabBoard.filter(({ train }) => trainType(train) === "regular")
+      .length,
+    electric: tabBoard.filter(({ train }) => trainType(train) === "electric")
+      .length,
+  } as Record<string, number>;
+  const shownServices = tabBoard.filter(
+    ({ train }) =>
+      stationView.type === "all" || trainType(train) === stationView.type,
+  );
+  const citySuggestions =
+    search.length >= 2
+      ? STATIONS.filter((station) =>
+          [station.name, placeName(station.name, "en")]
+            .join(" ")
+            .toLocaleLowerCase("uz")
+            .replace(/[‘’ʻʼ']/g, "")
+            .includes(search),
+        ).slice(0, 4)
+      : [];
+  function openStation(station: (typeof STATIONS)[number]) {
+    setDetailsOpen(false);
+    setStationId(station.id);
+    mapRef.current?.flyTo(station.coordinates, viewPadding(true));
+  }
   // Keep the focused point clear of the floating list (left) and the detail/station sheet (right on desktop, bottom on mobile).
   function viewPadding(sheet: boolean) {
     return isMobile
@@ -598,6 +659,185 @@ export default function Home() {
         : station?.coordinates;
     if (position) mapRef.current?.flyTo(position, viewPadding(false));
   }
+
+  const stationBody = activeStation && (
+    <>
+      <SheetHeader className="gap-0 px-5 pt-0 pb-2 md:pt-4 md:pb-3">
+        <div className="flex items-center justify-between">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-2 gap-1.5 text-muted-foreground"
+            onClick={() => {
+              setStationId(null);
+              if (isMobile) setListOpen(true);
+            }}
+          >
+            <ArrowLeft className="size-4" />
+            {t("sheet.back")}
+          </Button>
+          <Badge className="h-6 px-2.5">{t("station.badge")}</Badge>
+        </div>
+        <div className="mt-1 flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <SheetTitle className="text-2xl font-semibold tracking-tight md:text-3xl">
+              {place(activeStation.name)}
+            </SheetTitle>
+            <SheetDescription className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <MapPin className="size-3.5 text-primary" />
+              {activeStationInfo?.country
+                ? place(activeStationInfo.country)
+                : "-"}
+            </SheetDescription>
+          </div>
+          {activeStationInfo?.image && (
+            <button
+              type="button"
+              onClick={() => setPhotoOpen(true)}
+              aria-label={t("station.openPhoto")}
+              className="relative size-14 shrink-0 overflow-hidden rounded-xl bg-muted transition-transform active:scale-95"
+            >
+              <Image
+                src={activeStationInfo.image.src}
+                alt={
+                  lang === "en"
+                    ? t("station.photoAlt", { n: place(activeStation.name) })
+                    : activeStationInfo.image.alt
+                }
+                fill
+                sizes="56px"
+                className="object-cover"
+              />
+            </button>
+          )}
+        </div>
+        <div
+          role="tablist"
+          aria-label={t("station.badge")}
+          className="mt-3 flex gap-0.5 rounded-lg bg-muted p-1"
+        >
+          {(
+            [
+              ["departure", t("station.fDeparture")],
+              ["arrival", t("station.fArrival")],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              role="tab"
+              aria-selected={stationView.tab === value}
+              onClick={() =>
+                setStationViewState({ ...stationView, id: stationId, tab: value })
+              }
+              className={`flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-sm font-medium transition-colors ${stationView.tab === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {label}
+              <span className="text-xs tabular-nums opacity-60">
+                {tabRows(value).length}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
+          {(
+            [
+              ["all", t("list.all")],
+              ["fast", t("list.fast")],
+              ["regular", t("list.regular")],
+              ["electric", t("list.suburban")],
+            ] as const
+          )
+            .filter(([value]) => value === "all" || stationTypeCounts[value] > 0)
+            .map(([value, label]) => (
+              <button
+                key={value}
+                aria-pressed={stationView.type === value}
+                onClick={() =>
+                  setStationViewState({ ...stationView, id: stationId, type: value })
+                }
+                className={`flex h-7 shrink-0 items-center gap-1 rounded-full px-3 text-xs font-medium transition-colors ${stationView.type === value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+              >
+                {label}
+                <span className="tabular-nums opacity-70">
+                  {stationTypeCounts[value]}
+                </span>
+              </button>
+            ))}
+        </div>
+      </SheetHeader>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="space-y-2 px-4 pb-5">
+          {shownServices.length ? (
+            shownServices.map(({ train, time, dwell, shifted }) => {
+              const wait = now === null ? 0 : time - now;
+              const live = train.status === "running" && !shifted;
+              const other = place(
+                stationView.tab === "arrival" ? train.from : train.to,
+              );
+              const brand = TRAIN_INFO[train.number]?.brand;
+              return (
+                <Button
+                  key={`${train.number}-${time}`}
+                  variant="ghost"
+                  className="h-auto w-full items-center justify-start gap-3 rounded-xl border bg-card px-3 py-3 text-left shadow-none hover:bg-accent/60"
+                  onClick={() => {
+                    setStationId(null);
+                    selectTrain(train);
+                  }}
+                >
+                  <span className="w-[4.5rem] shrink-0">
+                    <span className="block text-xl leading-none font-semibold tabular-nums">
+                      {detailTime.format(time)}
+                    </span>
+                    <span className="mt-1.5 block text-[11px] leading-none whitespace-nowrap text-muted-foreground tabular-nums">
+                      {wait < 60_000
+                        ? t("station.now")
+                        : wait < 3_600_000
+                          ? t("dur.m", { m: Math.round(wait / 60_000) })
+                          : wait < 6 * 3_600_000
+                            ? duration(wait)
+                            : t("dur.h", { h: Math.round(wait / 3_600_000) })}
+                    </span>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] leading-tight font-semibold">
+                      {other}
+                    </span>
+                    <span className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      {brand && <Badge className="h-5 px-2">{brand}</Badge>}
+                      <span className="font-semibold text-foreground tabular-nums">
+                        {train.number}
+                      </span>
+                      {dwell > 0 && (
+                        <span className="truncate">
+                          · {t("details.dwell", { n: dwell })}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1">
+                    <span
+                      className={`text-xs font-semibold ${live ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}
+                    >
+                      {live ? t("status.running") : t("status.waiting")}
+                    </span>
+                    <ChevronRight
+                      className="size-4 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                  </span>
+                </Button>
+              );
+            })
+          ) : (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              {t("station.none")}
+            </p>
+          )}
+        </div>
+      </ScrollArea>
+    </>
+  );
 
   const trainList = (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -658,21 +898,41 @@ export default function Home() {
             )}
           </Button>
         </div>
+        {citySuggestions.length > 0 && (
+          <div className="mt-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
+            {citySuggestions.map((station) => (
+              <button
+                key={station.id}
+                onClick={() => openStation(station)}
+                className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 text-xs font-semibold transition-colors hover:bg-accent"
+              >
+                <MapPin className="size-3.5 text-primary" aria-hidden="true" />
+                {place(station.name)}
+              </button>
+            ))}
+          </div>
+        )}
 
         {filtersOpen && (
           <>
             <div
               role="tablist"
               aria-label={t("list.typeLabel")}
-              className="mt-2 flex gap-0.5 rounded-lg bg-muted p-1 md:mt-3"
+              className="mt-2 flex gap-0.5 overflow-x-auto rounded-lg bg-muted p-1 [scrollbar-width:none] md:mt-3"
             >
               {(
                 [
                   ["all", t("list.all"), trains.length],
                   [
-                    "intercity",
-                    t("list.intercity"),
-                    trains.filter((train) => !train.kind).length,
+                    "fast",
+                    t("list.fast"),
+                    trains.filter((train) => trainType(train) === "fast").length,
+                  ],
+                  [
+                    "regular",
+                    t("list.regular"),
+                    trains.filter((train) => trainType(train) === "regular")
+                      .length,
                   ],
                   [
                     "electric",
@@ -689,7 +949,7 @@ export default function Home() {
                     setCategory(value);
                     setRegion("all");
                   }}
-                  className={`flex h-7 flex-auto items-center justify-center gap-1 rounded-md px-2.5 md:h-8 text-xs font-medium whitespace-nowrap transition-colors ${category === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`flex h-7 flex-auto shrink-0 items-center justify-center gap-1 rounded-md px-2.5 md:h-8 text-xs font-medium whitespace-nowrap transition-colors ${category === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
                 >
                   {label}
                   <span className="tabular-nums opacity-60">{count}</span>
@@ -781,7 +1041,7 @@ export default function Home() {
         )}
       </div>
       <ScrollArea className="mt-2 min-h-0 flex-1 md:mt-3">
-        <div className="px-2 pb-3">
+        <div className="space-y-2 px-4 pb-4">
           {now === null ? (
             <p role="status" className="p-5 text-sm text-muted-foreground">
               {t("list.loading")}
@@ -827,7 +1087,7 @@ export default function Home() {
               onFocus={() => setHoveredId(train.number)}
               onBlur={() => setHoveredId(null)}
               onClick={() => selectTrain(train)}
-              className="train-row group h-auto w-full items-stretch rounded-md px-3 py-4 text-left whitespace-normal"
+              className="group h-auto w-full items-stretch rounded-xl border bg-card px-3 py-3 text-left whitespace-normal shadow-none hover:bg-accent/60 focus-visible:bg-accent/60 active:bg-secondary data-[highlighted=true]:border-primary/30 data-[highlighted=true]:bg-accent"
             >
               <span className="flex w-full flex-col gap-3">
                 <span className="flex items-center justify-between gap-2">
@@ -1425,11 +1685,12 @@ export default function Home() {
       )}
 
       <Sheet
-        open={isMobile && (listOpen || detailsOpen)}
+        open={isMobile && (listOpen || detailsOpen || Boolean(activeStation))}
         onOpenChange={(open) => {
           if (!open) {
             setListOpen(false);
             setDetailsOpen(false);
+            setStationId(null);
           }
         }}
         modal={false}
@@ -1456,7 +1717,7 @@ export default function Home() {
               <Button
                 variant="ghost"
                 size="icon"
-                className={`absolute top-2 right-2 size-10 transition-opacity ${detailsOpen ? "pointer-events-none opacity-0" : ""}`}
+                className={`absolute top-2 right-2 size-10 transition-opacity ${detailsOpen || activeStation ? "pointer-events-none opacity-0" : ""}`}
                 aria-label={t("map.closeList")}
               />
             }
@@ -1465,10 +1726,16 @@ export default function Home() {
           </SheetClose>
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <div
-              inert={detailsOpen}
-              className={`absolute inset-0 flex flex-col transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${detailsOpen ? "-translate-x-1/4 opacity-0" : ""}`}
+              inert={detailsOpen || Boolean(activeStation)}
+              className={`absolute inset-0 flex flex-col transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${detailsOpen || activeStation ? "-translate-x-1/4 opacity-0" : ""}`}
             >
               {isMobile && trainList}
+            </div>
+            <div
+              inert={detailsOpen || !activeStation}
+              className={`absolute inset-0 flex flex-col bg-background transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${!detailsOpen && activeStation ? "" : "translate-x-full"}`}
+            >
+              {stationBody}
             </div>
             <div
               inert={!detailsOpen}
@@ -1480,160 +1747,19 @@ export default function Home() {
         </SheetContent>
       </Sheet>
       <Sheet
-        open={Boolean(activeStation)}
+        open={!isMobile && Boolean(activeStation)}
         onOpenChange={(open) => {
-          if (!open) setStationId(null);
+          if (!open && !photoOpen) setStationId(null);
         }}
         modal={false}
-        disablePointerDismissal={isMobile}
+        disablePointerDismissal={photoOpen}
       >
         <SheetContent
-          side={isMobile ? "bottom" : "right"}
+          side="right"
           showCloseButton={false}
-          style={sheetStyle}
-          className={
-            isMobile
-              ? "gap-0 overflow-hidden rounded-t-3xl border-border bg-background data-[side=bottom]:data-ending-style:translate-y-full data-[side=bottom]:data-starting-style:translate-y-full data-ending-style:opacity-100 data-starting-style:opacity-100"
-              : "inset-y-24! right-5! h-auto! w-[390px]! max-w-[390px]! gap-0 overflow-hidden rounded-2xl border-border bg-background shadow-xl"
-          }
+          className="top-24! bottom-6! right-5! h-auto! w-[390px]! max-w-[390px]! gap-0 overflow-hidden rounded-2xl border-border bg-background shadow-xl"
         >
-          {activeStation && (
-            <>
-              {isMobile && sheetHandle}
-              <SheetHeader
-                className={`gap-0 px-5 ${isMobile ? "pt-0 pb-2" : "pt-4 pb-4"}`}
-              >
-                <div className="flex items-center justify-between md:mb-5">
-                  <SheetClose
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="-ml-2 gap-1.5 text-muted-foreground"
-                      />
-                    }
-                  >
-                    <ArrowLeft className="size-4" />
-                    {t("sheet.back")}
-                  </SheetClose>
-                  <Badge className="h-6 px-2.5">{t("station.badge")}</Badge>
-                </div>
-                <p className="hidden text-[10px] font-semibold uppercase tracking-wider text-muted-foreground md:block">
-                  {t("station.kicker")}
-                </p>
-                <SheetTitle className="mt-1 text-2xl font-semibold tracking-tight md:text-3xl">
-                  {place(activeStation.name)}
-                </SheetTitle>
-                <SheetDescription className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground md:mt-2 md:text-sm md:text-foreground">
-                  <MapPin className="size-3.5 text-primary md:size-4" />
-                  {activeStationInfo?.country
-                    ? place(activeStationInfo.country)
-                    : "-"}
-                </SheetDescription>
-              </SheetHeader>
-              <ScrollArea className="min-h-0 flex-1">
-                <div className="space-y-3 px-4 pb-5 md:space-y-4">
-                  {activeStationInfo?.image ? (
-                    <div>
-                      <div className="relative aspect-[2/1] overflow-hidden rounded-xl bg-muted md:aspect-video md:rounded-2xl">
-                        <Image
-                          src={activeStationInfo.image.src}
-                          alt={
-                            lang === "en"
-                              ? t("station.photoAlt", {
-                                  n: place(activeStation.name),
-                                })
-                              : activeStationInfo.image.alt
-                          }
-                          fill
-                          sizes="(max-width: 767px) 100vw, 390px"
-                          className="object-cover"
-                        />
-                      </div>
-                      <a
-                        href={activeStationInfo.image.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-1.5 block text-right text-[10px] text-muted-foreground underline"
-                      >
-                        {t("station.photoCredit", {
-                          a: activeStationInfo.image.author,
-                          l:
-                            activeStationInfo.image.license === "Manba sayti"
-                              ? t("source")
-                              : activeStationInfo.image.license,
-                        })}
-                      </a>
-                    </div>
-                  ) : (
-                    <div className="flex aspect-[2/1] items-center justify-center rounded-xl bg-muted md:aspect-video md:rounded-2xl text-muted-foreground">
-                      <TrainFront className="size-10" />
-                      <span className="sr-only">{t("station.noPhoto")}</span>
-                    </div>
-                  )}
-                  <Card className="gap-3 rounded-2xl p-3 shadow-sm md:p-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {t("station.today")}
-                      </h3>
-                      <Badge variant="secondary">
-                        {stationServices.length}
-                      </Badge>
-                    </div>
-                    {stationServices.length ? (
-                      <div className="space-y-2">
-                        {stationServices.map(({ train, time, kind }) => {
-                          return (
-                            <Button
-                              key={`${train.number}-${time}`}
-                              variant="ghost"
-                              className="h-auto w-full justify-start rounded-xl border bg-muted/40 px-3 py-2 text-left md:py-3"
-                              onClick={() => {
-                                setStationId(null);
-                                selectTrain(train);
-                              }}
-                            >
-                              <span className="mr-3 w-11 shrink-0 text-base font-semibold tabular-nums">
-                                {detailTime.format(time)}
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="flex items-center gap-2">
-                                  <Badge className="h-5 px-2">
-                                    {train.number}
-                                  </Badge>
-                                  <span className="text-[11px] text-muted-foreground">
-                                    {kind === "departure"
-                                      ? t("station.departing")
-                                      : kind === "arrival"
-                                        ? t("station.arriving")
-                                        : t("station.stopping")}
-                                  </span>
-                                </span>
-                                <span className="mt-1 block truncate text-xs font-medium text-muted-foreground">
-                                  {kind === "stop"
-                                    ? `${place(train.from)} → ${place(train.to)}`
-                                    : place(
-                                        kind === "departure"
-                                          ? train.to
-                                          : train.from,
-                                      )}
-                                </span>
-                              </span>
-                              <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
-                            </Button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="py-5 text-center text-sm text-muted-foreground">
-                        {t("station.none")}
-                      </p>
-                    )}
-                  </Card>
-                </div>
-              </ScrollArea>
-            </>
-          )}
+          {stationBody}
         </SheetContent>
       </Sheet>
       <Sheet
@@ -1644,11 +1770,60 @@ export default function Home() {
         <SheetContent
           side="right"
           showCloseButton={false}
-          className="inset-y-24! right-5! h-auto! w-[390px]! max-w-[390px]! gap-0 overflow-hidden rounded-2xl border-border bg-background shadow-xl"
+          className="top-24! bottom-6! right-5! h-auto! w-[390px]! max-w-[390px]! gap-0 overflow-hidden rounded-2xl border-border bg-background shadow-xl"
         >
           {detailBody}
         </SheetContent>
       </Sheet>
+      {photoOpen && activeStationInfo?.image && activeStation && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={place(activeStation.name)}
+          className="fixed inset-0 z-[80] flex flex-col bg-black/85 p-4 backdrop-blur-sm"
+          onClick={() => setPhotoOpen(false)}
+        >
+          <div className="flex justify-end">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-10 text-white hover:bg-white/15 hover:text-white"
+              aria-label={t("map.closeList")}
+              onClick={() => setPhotoOpen(false)}
+            >
+              <X className="size-5" />
+            </Button>
+          </div>
+          <div className="relative min-h-0 flex-1">
+            <Image
+              src={activeStationInfo.image.src}
+              alt={
+                lang === "en"
+                  ? t("station.photoAlt", { n: place(activeStation.name) })
+                  : activeStationInfo.image.alt
+              }
+              fill
+              sizes="100vw"
+              className="object-contain"
+            />
+          </div>
+          <a
+            href={activeStationInfo.image.sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => event.stopPropagation()}
+            className="mt-3 text-center text-xs text-white/70 underline"
+          >
+            {t("station.photoCredit", {
+              a: activeStationInfo.image.author,
+              l:
+                activeStationInfo.image.license === "Manba sayti"
+                  ? t("source")
+                  : activeStationInfo.image.license,
+            })}
+          </a>
+        </div>
+      )}
       {cookieChoice === null && (
         <div
           role="dialog"
