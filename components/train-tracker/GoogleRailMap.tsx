@@ -224,6 +224,7 @@ export const GoogleRailMap = forwardRef<GoogleRailMapRef, GoogleRailMapProps>(fu
     const map = mapRef.current;
     const api = apiRef.current;
     if (!map || !api) return;
+    const maps = api.maps;
     markersRef.current.forEach((marker) => marker.setMap(null));
     const markers: GoogleOverlay[] = [];
 
@@ -233,7 +234,7 @@ export const GoogleRailMap = forwardRef<GoogleRailMapRef, GoogleRailMapProps>(fu
 
       constructor(coordinates: Coordinate, element: HTMLElement) {
         super();
-        this.position = new api.maps.LatLng(coordinates[1], coordinates[0]);
+        this.position = new maps.LatLng(coordinates[1], coordinates[0]);
         this.element = element;
       }
 
