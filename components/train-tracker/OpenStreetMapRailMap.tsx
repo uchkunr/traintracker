@@ -2,7 +2,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
-import type { GeoJSONSource, Map as MapLibreMap, Marker, StyleSpecification } from "maplibre-gl";
+import type { GeoJSONSource, Map as MapLibreMap, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Coordinate, RailNetwork, RailRoute, Station } from "@/lib/train-data";
 
@@ -10,19 +10,10 @@ if (typeof window !== "undefined" && !maplibregl.getWorkerUrl()) {
   maplibregl.setWorkerUrl(`https://unpkg.com/maplibre-gl@${maplibregl.getVersion()}/dist/maplibre-gl-worker.mjs`);
 }
 
-const openStreetMapStyle: StyleSpecification = {
-  version: 8,
-  sources: {
-    openstreetmap: {
-      type: "raster",
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-      tileSize: 256,
-      maxzoom: 19,
-      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors',
-    },
-  },
-  layers: [{ id: "openstreetmap", type: "raster", source: "openstreetmap" }],
-};
+// Vector tiles (OpenStreetMap data served by OpenFreeMap) stay sharp at every zoom and on retina screens.
+const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+// Rail lines go under the place names, so labels stay readable above the route.
+const labelLayer = (map: MapLibreMap) => map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
 
 export interface MapTrain {
   number: string;
@@ -108,18 +99,18 @@ export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStre
     }
     const map = new maplibregl.Map({
       container,
-      style: openStreetMapStyle,
+      style: MAP_STYLE,
       center: [66.5, 40],
       zoom: 6.2,
       attributionControl: false,
       maxZoom: 19,
     });
     const attribution = document.createElement("a");
-    attribution.href = "https://www.openstreetmap.org/copyright";
+    attribution.href = "https://openfreemap.org";
     attribution.target = "_blank";
     attribution.rel = "noreferrer";
     attribution.className = "absolute right-1 bottom-1 z-10 rounded bg-background/85 px-1.5 py-0.5 text-[9px] text-muted-foreground shadow-sm backdrop-blur-sm hover:text-foreground";
-    attribution.textContent = "© OpenStreetMap contributors";
+    attribution.textContent = "OpenFreeMap © OpenMapTiles Data from OpenStreetMap";
     container.appendChild(attribution);
     mapRef.current = map;
     map.on("click", (event) => {
@@ -158,8 +149,8 @@ export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStre
     }
     if (map.getSource("osm-rail-network")) map.removeSource("osm-rail-network");
     map.addSource("osm-rail-network", { type: "geojson", data });
-    map.addLayer({ id: "osm-rail-network-casing", type: "line", source: "osm-rail-network", paint: { "line-color": palette.casing, "line-width": 7, "line-opacity": 0.8 } });
-    map.addLayer({ id: "osm-rail-network-line", type: "line", source: "osm-rail-network", paint: { "line-color": palette.rail, "line-width": 3, "line-opacity": 0.95 } });
+    map.addLayer({ id: "osm-rail-network-casing", type: "line", source: "osm-rail-network", paint: { "line-color": palette.casing, "line-width": 7, "line-opacity": 0.8 } }, labelLayer(map));
+    map.addLayer({ id: "osm-rail-network-line", type: "line", source: "osm-rail-network", paint: { "line-color": palette.rail, "line-width": 3, "line-opacity": 0.95 } }, labelLayer(map));
   }, [network, palette, styleRevision]);
 
   useEffect(() => {
@@ -173,9 +164,9 @@ export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStre
     }
     if (!selectedRoute) return;
     map.addSource("osm-selected-route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: selectedRoute.coordinates } } });
-    map.addLayer({ id: "osm-selected-route-line", type: "line", source: "osm-selected-route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#64748b", "line-width": 8 } });
+    map.addLayer({ id: "osm-selected-route-line", type: "line", source: "osm-selected-route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#64748b", "line-width": 8 } }, labelLayer(map));
     map.addSource("osm-selected-route-progress", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: routeUntil(selectedRoute, selectedProgress) } } });
-    map.addLayer({ id: "osm-selected-route-progress", type: "line", source: "osm-selected-route-progress", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": palette.accent, "line-width": 8 } });
+    map.addLayer({ id: "osm-selected-route-progress", type: "line", source: "osm-selected-route-progress", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": palette.accent, "line-width": 8 } }, labelLayer(map));
   }, [selectedRoute, palette, styleRevision]);
 
   useEffect(() => {

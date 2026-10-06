@@ -12,10 +12,6 @@ import {
   Info,
   SlidersHorizontal,
   Banknote,
-  Navigation,
-  Hourglass,
-  CircleCheck,
-  CircleX,
   ListOrdered,
   TriangleAlert,
   Ruler,
@@ -57,7 +53,6 @@ import {
 import {
   SCHEDULE,
   getServiceState,
-  formatDateTime,
   type DayRule,
   type ScheduledTrain,
 } from "@/lib/schedule";
@@ -70,7 +65,6 @@ import { STATION_INFO } from "@/lib/station-info";
 import { TRAIN_INFO } from "@/lib/trains-info";
 import { useLang } from "@/lib/use-lang";
 import { estimateStops, stopNames } from "@/lib/train-stops";
-import { ELECTRIC_ROUTES } from "@/lib/electric-trains";
 
 const detailTime = new Intl.DateTimeFormat("uz", {
   timeZone: "Asia/Tashkent",
@@ -90,17 +84,6 @@ const SHEET_TRANSITION =
 type TrainType = "fast" | "regular" | "electric";
 const trainType = (train: ScheduledTrain): TrainType =>
   train.kind ? "electric" : TRAIN_INFO[train.number] ? "fast" : "regular";
-const statusIcon = {
-  running: Navigation,
-  waiting: Hourglass,
-  arrived: CircleCheck,
-  cancelled: CircleX,
-};
-const statusText = {
-  running: "text-emerald-600 dark:text-emerald-400",
-  waiting: "text-amber-600 dark:text-amber-400",
-  arrived: "text-muted-foreground",
-};
 
 export default function Home() {
   const mapRef = useRef<OpenStreetMapRailMapRef>(null);
@@ -186,6 +169,12 @@ export default function Home() {
   const [photoOpen, setPhotoOpen] = useState(false);
   const [routeField, setRouteField] = useState<"from" | "to">("from");
   const [routeText, setRouteText] = useState({ from: "", to: "" });
+  const [leg, setLeg] = useState<{
+    from: string;
+    to: string;
+    depart: number;
+    arrive: number;
+  } | null>(null);
   const [routePick, setRoutePick] = useState<{
     from: string | null;
     to: string | null;
@@ -211,12 +200,6 @@ export default function Home() {
     lastT: 0,
     velocity: 0,
     frame: 0,
-  });
-  const chipDrag = useRef({
-    active: false,
-    startX: 0,
-    startLeft: 0,
-    moved: false,
   });
   useEffect(() => {
     const frame = requestAnimationFrame(() => setNow(Date.now()));
@@ -427,6 +410,47 @@ export default function Home() {
       )
     : 0;
 
+  // Opened from a route search: the detail focuses on that part of the journey.
+  const legFrom = leg ? detailStops.findIndex((stop) => stop.name === leg.from) : -1;
+  const legTo = leg ? detailStops.findIndex((stop) => stop.name === leg.to) : -1;
+  const legOn = Boolean(selected && leg && legFrom >= 0 && legTo > legFrom);
+  const legShift =
+    legOn && leg
+      ? leg.depart -
+        (legFrom === 0
+          ? detailStops[0].arrival
+          : detailStops[legFrom].arrival + detailStops[legFrom].dwell * 60_000)
+      : 0;
+  const trip = selected
+    ? legOn && leg && now !== null
+      ? {
+          from: leg.from,
+          to: leg.to,
+          departure: leg.depart,
+          arrival: leg.arrive,
+          progress: Math.max(0, Math.min(1, (now - leg.depart) / (leg.arrive - leg.depart))),
+        }
+      : {
+          from: selected.from,
+          to: selected.to,
+          departure: selected.departure,
+          arrival: selected.arrival,
+          progress: selected.progress,
+        }
+    : undefined;
+  const tripDistance = selectedRoute
+    ? selectedRoute.distance *
+      (legOn ? (detailStops[legTo].progress ?? 0) - (detailStops[legFrom].progress ?? 0) : 1)
+    : undefined;
+  const shownStops = legOn ? detailStops.slice(legFrom, legTo + 1) : detailStops;
+  const stopPassed = (stop: (typeof detailStops)[number]) =>
+    legOn
+      ? now !== null && now >= stop.arrival + legShift
+      : stop.progress !== null && Boolean(selected && selected.progress >= stop.progress);
+  const shownActive = legOn
+    ? Math.max(0, shownStops.findLastIndex(stopPassed))
+    : currentStopIndex;
+
   const search = query
     .trim()
     .toLocaleLowerCase("uz")
@@ -457,15 +481,6 @@ export default function Home() {
       .replace(/[‘’ʻʼ']/g, "")
       .includes(search),
   );
-  const statusCounts = {
-    all: matchingTrains.length,
-    running: matchingTrains.filter((train) => train.status === "running")
-      .length,
-    waiting: matchingTrains.filter((train) => train.status === "waiting")
-      .length,
-    arrived: matchingTrains.filter((train) => train.status === "arrived")
-      .length,
-  } as Record<string, number>;
   const filtersCount =
     Number(status !== "running") +
     Number(category !== "all") +
@@ -487,9 +502,6 @@ export default function Home() {
         statusOrder[a.status] - statusOrder[b.status] ||
         sortKey(a) - sortKey(b),
     );
-  const electricRegions = [
-    ...new Set(ELECTRIC_ROUTES.map((route) => route.region)),
-  ];
   const focused = detailsOpen ? selected : undefined;
   const focusedStops = focused
     ? new Set(estimateStops(focused).map((stop) => stop.name))
@@ -606,7 +618,7 @@ export default function Home() {
   );
   // Trips that call at both stations in the right order, as the next 36 hours of departures.
   const routeActive = Boolean(routePick.from && routePick.to);
-  const routeResults =
+  const routeTrips =
     routeActive && now !== null
       ? trains
           .flatMap<{ train: ScheduledTrain; depart: number; arrive: number }>(
@@ -635,6 +647,15 @@ export default function Home() {
           )
           .sort((a, b) => a.depart - b.depart)
       : [];
+  // The type filter narrows the results; the counts on its buttons come from the unfiltered trips.
+  const routeResults = routeTrips.filter(
+    ({ train }) => category === "all" || trainType(train) === category,
+  );
+  const routeCounts = {
+    fast: routeTrips.filter(({ train }) => trainType(train) === "fast").length,
+    regular: routeTrips.filter(({ train }) => trainType(train) === "regular")
+      .length,
+  } as Record<string, number>;
   const routeTyped = routeText[routeField]
     .toLocaleLowerCase("uz")
     .replace(/[‘’ʻʼ']/g, "");
@@ -646,7 +667,7 @@ export default function Home() {
             .toLocaleLowerCase("uz")
             .replace(/[‘’ʻʼ']/g, "")
             .includes(routeTyped),
-        ).slice(0, 5)
+        ).slice(0, 4)
       : [];
   // Keep the focused point clear of the floating list (left) and the detail/station sheet (right on desktop, bottom on mobile).
   function viewPadding(sheet: boolean) {
@@ -659,7 +680,8 @@ export default function Home() {
         }
       : { top: 96, bottom: 48, left: 360, right: sheet ? 450 : 80 };
   }
-  function selectTrain(train: ScheduledTrain) {
+  function selectTrain(train: ScheduledTrain, trainLeg?: NonNullable<typeof leg>) {
+    setLeg(trainLeg ?? null);
     setSelectedId(train.number);
     setListOpen(isMobile);
     setDetailsOpen(true);
@@ -685,19 +707,6 @@ export default function Home() {
       viewPadding(true),
     );
   }
-  function changeStatus(nextStatus: string) {
-    setStatus(nextStatus);
-    if (nextStatus === "all") return;
-    const train = matchingTrains.find((item) => item.status === nextStatus);
-    if (!train) return;
-    const station = STATIONS.find((item) => item.name === train.from);
-    const position =
-      nextStatus === "running" && routes[train.number]
-        ? pointAlong(routes[train.number]!, train.progress).coordinates
-        : station?.coordinates;
-    if (position) mapRef.current?.flyTo(position, viewPadding(false));
-  }
-
   const stationBody = activeStation && (
     <>
       <SheetHeader className="gap-0 px-5 pt-0 pb-2 md:pt-4 md:pb-3">
@@ -945,7 +954,14 @@ export default function Home() {
               onMouseLeave={() => setHoveredId(null)}
               onFocus={() => setHoveredId(train.number)}
               onBlur={() => setHoveredId(null)}
-              onClick={() => selectTrain(train)}
+              onClick={() =>
+                selectTrain(train, {
+                  from: routePick.from!,
+                  to: routePick.to!,
+                  depart,
+                  arrive,
+                })
+              }
               className="group h-auto w-full items-stretch rounded-xl border bg-card px-3 py-3 text-left whitespace-normal shadow-none hover:bg-accent/60 focus-visible:bg-accent/60 active:bg-secondary data-[highlighted=true]:border-primary/30 data-[highlighted=true]:bg-accent"
             >
               <span className="flex w-full flex-col gap-3">
@@ -1038,7 +1054,7 @@ export default function Home() {
 
   const trainList = (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="px-5 md:pt-5">
+      <div className={`px-5 md:pt-5 ${routeActive ? "" : "pb-5"}`}>
         <div className="mb-2 flex h-8 items-center md:mb-3 justify-between">
           <h2 className="text-lg font-semibold tracking-tight">
             {t("list.title")}
@@ -1052,11 +1068,11 @@ export default function Home() {
               {t("list.reset")}
             </button>
           ) : (
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {t("list.trips", {
-                n: routeActive ? routeResults.length : visibleTrains.length,
-              })}
-            </span>
+            routeActive && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {t("list.trips", { n: routeResults.length })}
+              </span>
+            )
           )}
         </div>
         <div>
@@ -1162,291 +1178,38 @@ export default function Home() {
             </div>
           </div>
         {filtersOpen && (
-          <>
-            <div
-              role="tablist"
-              aria-label={t("list.typeLabel")}
-              className="mt-2 flex gap-0.5 overflow-x-auto rounded-lg bg-muted p-1 [scrollbar-width:none] md:mt-3"
-            >
-              {(
-                [
-                  ["all", t("list.all"), trains.length],
-                  [
-                    "fast",
-                    t("list.fast"),
-                    trains.filter((train) => trainType(train) === "fast").length,
-                  ],
-                  [
-                    "regular",
-                    t("list.regular"),
-                    trains.filter((train) => trainType(train) === "regular")
-                      .length,
-                  ],
-                  [
-                    "electric",
-                    t("list.suburban"),
-                    trains.filter((train) => train.kind).length,
-                  ],
-                ] as const
-              ).map(([value, label, count]) => (
-                <button
-                  key={value}
-                  role="tab"
-                  aria-selected={category === value}
-                  onClick={() => {
-                    setCategory(value);
-                    setRegion("all");
-                  }}
-                  className={`flex h-7 flex-auto shrink-0 items-center justify-center gap-1 rounded-md px-2.5 md:h-8 text-xs font-medium whitespace-nowrap transition-colors ${category === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-                >
-                  {label}
-                  <span className="tabular-nums opacity-60">{count}</span>
-                </button>
-              ))}
-            </div>
-            <div
-              role="group"
-              aria-label={t("list.statusLabel")}
-              className="mt-2 grid grid-cols-4 gap-1.5 md:mt-3"
-            >
-              {(
-                [
-                  ["all", t("list.allStatuses")],
-                  ["running", t("status.running")],
-                  ["waiting", t("status.waiting")],
-                  ["arrived", t("status.arrived")],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  aria-pressed={status === value}
-                  onClick={() => changeStatus(value)}
-                  className={`flex min-h-10 flex-col items-center justify-center rounded-lg border px-1 py-1 md:min-h-12 md:py-1.5 transition-colors ${status === value ? "border-primary bg-accent text-accent-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground"}`}
-                >
-                  <span className="flex items-center gap-1 text-base leading-none font-semibold text-foreground tabular-nums">
-                    {statusCounts[value]}
-                  </span>
-                  <span className="mt-1 text-[10.5px] leading-none md:mt-1.5">
-                    {label}
-                  </span>
-                </button>
-              ))}
-            </div>
-            {category === "electric" && (
-              <div
-                className="-mx-5 mt-3 flex cursor-grab touch-pan-x gap-1.5 overflow-x-auto px-5 pb-1 select-none [scrollbar-width:none] [mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%-32px),transparent)] active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
-                onWheel={(event) => {
-                  if (Math.abs(event.deltaY) > Math.abs(event.deltaX))
-                    event.currentTarget.scrollLeft += event.deltaY;
-                }}
-                onPointerDown={(event) => {
-                  if (event.pointerType !== "mouse") return;
-                  chipDrag.current = {
-                    active: true,
-                    startX: event.clientX,
-                    startLeft: event.currentTarget.scrollLeft,
-                    moved: false,
-                  };
-                }}
-                onPointerMove={(event) => {
-                  const d = chipDrag.current;
-                  if (!d.active) return;
-                  const delta = event.clientX - d.startX;
-                  if (Math.abs(delta) > 4) {
-                    d.moved = true;
-                    event.currentTarget.setPointerCapture(event.pointerId);
-                  }
-                  if (d.moved)
-                    event.currentTarget.scrollLeft = d.startLeft - delta;
-                }}
-                onPointerUp={() => {
-                  chipDrag.current.active = false;
-                }}
-                onPointerCancel={() => {
-                  chipDrag.current.active = false;
-                }}
-                onClickCapture={(event) => {
-                  if (chipDrag.current.moved) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    chipDrag.current.moved = false;
-                  }
-                }}
+          <div
+            role="group"
+            aria-label={t("list.typeLabel")}
+            className="mt-2 flex gap-1.5"
+          >
+            {(["fast", "regular"] as const).map((value) => (
+              <button
+                key={value}
+                aria-pressed={category === value}
+                onClick={() => setCategory(category === value ? "all" : value)}
+                className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border text-sm font-medium transition-colors ${category === value ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground"}`}
               >
-                {["all", ...electricRegions].map((name) => (
-                  <button
-                    key={name}
-                    onClick={() => setRegion(name)}
-                    aria-pressed={region === name}
-                    className={`h-8 shrink-0 rounded-full border px-3 text-xs font-medium transition-colors ${region === name ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground"}`}
-                  >
-                    {name === "all" ? t("list.allStatuses") : place(name)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </>
+                {t(value === "fast" ? "list.fast" : "list.regular")}
+                {routeActive && (
+                  <span className="tabular-nums opacity-70">
+                    {routeCounts[value]}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         )}
       </div>
-      <ScrollArea className="mt-2 min-h-0 flex-1 md:mt-3">
-        <div className="space-y-2 px-4 pb-4">
-          {routeActive && routeListJsx}
-          {now === null ? (
-            <p role="status" className="p-5 text-sm text-muted-foreground">
-              {t("list.loading")}
-            </p>
-          ) : (
-            !routeActive &&
-            visibleTrains.length === 0 && (
-              <div role="status" className="px-3 py-10 text-center">
-                <p className="text-sm font-medium">
-                  {matchingTrains.length
-                    ? t("list.emptyStatus")
-                    : t("list.emptyNone")}
-                </p>
-                {matchingTrains.length > 0 && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {t("list.emptyHint", { n: matchingTrains.length })}
-                  </p>
-                )}
-                <Button
-                  variant="link"
-                  className="mt-2 h-10"
-                  onClick={() =>
-                    matchingTrains.length ? setStatus("all") : resetFilters()
-                  }
-                >
-                  {matchingTrains.length
-                    ? t("list.showAll")
-                    : t("list.clearFilters")}
-                </Button>
-              </div>
-            )
-          )}
-          {(routeActive ? [] : visibleTrains).map((train) => (
-            <Button
-              key={train.number}
-              variant="ghost"
-              aria-label={t("list.rowLabel", { n: train.number })}
-              aria-pressed={selectedId === train.number}
-              data-highlighted={
-                selectedId === train.number || hoveredId === train.number
-              }
-              onMouseEnter={() => setHoveredId(train.number)}
-              onMouseLeave={() => setHoveredId(null)}
-              onFocus={() => setHoveredId(train.number)}
-              onBlur={() => setHoveredId(null)}
-              onClick={() => selectTrain(train)}
-              className="group h-auto w-full items-stretch rounded-xl border bg-card px-3 py-3 text-left whitespace-normal shadow-none hover:bg-accent/60 focus-visible:bg-accent/60 active:bg-secondary data-[highlighted=true]:border-primary/30 data-[highlighted=true]:bg-accent"
-            >
-              <span className="flex w-full flex-col gap-3">
-                <span className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-2">
-                    <span className="flex items-center gap-1.5 text-base font-semibold tracking-tight tabular-nums">
-                      <TramFront
-                        className="size-4 shrink-0 text-primary"
-                        aria-hidden="true"
-                      />
-                      № {train.number}
-                    </span>
-                    {TRAIN_INFO[train.number] && (
-                      <span className="text-[11px] font-medium text-muted-foreground">
-                        {TRAIN_INFO[train.number]!.brand}
-                      </span>
-                    )}
-                    {train.kind && (
-                      <span className="text-[11px] font-medium text-muted-foreground">
-                        {t("list.suburban")}
-                      </span>
-                    )}
-                  </span>
-                  <span
-                    className={`flex shrink-0 items-center gap-1 text-xs font-medium tabular-nums ${train.cancelled ? "text-red-600 dark:text-red-400" : statusText[train.status]}`}
-                  >
-                    {(() => {
-                      const Icon =
-                        statusIcon[
-                          train.cancelled ? "cancelled" : train.status
-                        ];
-                      return <Icon className="size-3.5" aria-hidden="true" />;
-                    })()}
-                    {train.cancelled
-                      ? t("status.cancelled")
-                      : train.status === "running"
-                        ? `${t("status.running")} · ${Math.round(train.progress * 100)}%`
-                        : t(`status.${train.status}` as MessageKey)}
-                  </span>
-                </span>
-                <span className="flex flex-col">
-                  <span className="grid grid-cols-[10px_1fr_auto] items-center gap-x-3 py-1.5">
-                    <span className="relative flex items-center justify-center self-stretch">
-                      <span className="absolute top-1/2 -bottom-px w-px bg-primary/30" />
-                      <span className="relative z-10 size-2.5 rounded-full border-2 border-primary bg-card" />
-                    </span>
-                    <span className="min-w-0 text-[13px] font-semibold">
-                      {place(train.from)}
-                    </span>
-                    <span className="flex items-baseline gap-1.5 tabular-nums">
-                      <span className="text-sm font-semibold">
-                        {detailTime.format(train.departure)}
-                      </span>
-                      {detailDate.format(train.departure) !==
-                        detailDate.format(now ?? 0) && (
-                        <span className="text-[11px] text-muted-foreground">
-                          {detailDate.format(train.departure).slice(5)}
-                        </span>
-                      )}
-                    </span>
-                  </span>
-                  <span className="grid grid-cols-[10px_1fr_auto] items-center gap-x-3 py-1.5">
-                    <span className="relative flex items-center justify-center self-stretch">
-                      <span className="absolute -top-px bottom-1/2 w-px bg-primary/30" />
-                      <span className="relative z-10 size-2.5 rounded-full border-2 border-primary bg-primary" />
-                    </span>
-                    <span className="min-w-0 text-[13px] font-semibold">
-                      {place(train.to)}
-                    </span>
-                    <span className="flex items-baseline gap-1.5 tabular-nums">
-                      <span className="text-sm font-semibold">
-                        {detailTime.format(train.arrival)}
-                      </span>
-                      {detailDate.format(train.arrival) !==
-                        detailDate.format(now ?? 0) && (
-                        <span className="text-[11px] text-muted-foreground">
-                          {detailDate.format(train.arrival).slice(5)}
-                        </span>
-                      )}
-                    </span>
-                  </span>
-                </span>
-                {(train.status === "arrived" || train.price) && (
-                  <span className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground tabular-nums">
-                    <span className="min-w-0 flex-1">
-                      {train.status === "arrived" &&
-                        t("list.nextDeparture", {
-                          t: formatDateTime(train.nextDeparture),
-                        })}
-                    </span>
-                    {train.price && (
-                      <span className="flex shrink-0 items-center gap-1 font-medium text-foreground">
-                        <Banknote
-                          className="size-3.5 text-muted-foreground"
-                          aria-hidden="true"
-                        />
-                        {money(train.price)}
-                      </span>
-                    )}
-                  </span>
-                )}
-              </span>
-            </Button>
-          ))}
-        </div>
-      </ScrollArea>
+      {routeActive && (
+        <ScrollArea className="mt-2 min-h-0 flex-1 md:mt-3">
+          <div className="space-y-2 px-4 pb-4">{routeListJsx}</div>
+        </ScrollArea>
+      )}
     </div>
   );
 
-  const detailBody = selected && (
+  const detailBody = selected && trip && (
     <>
       <SheetHeader
         className={`gap-0 px-5 ${isMobile ? "pt-0 pb-2" : "pt-4 pb-4"}`}
@@ -1537,10 +1300,10 @@ export default function Home() {
                   {t("details.departure")}
                 </p>
                 <p className="mt-0.5 text-2xl font-semibold tracking-tight tabular-nums md:text-3xl">
-                  {detailTime.format(selected.departure)}
+                  {detailTime.format(trip.departure)}
                 </p>
                 <p className="text-[11px] text-muted-foreground tabular-nums">
-                  {detailDate.format(selected.departure)}
+                  {detailDate.format(trip.departure)}
                 </p>
               </div>
               <span className="mt-3 flex flex-col items-center gap-1">
@@ -1549,7 +1312,7 @@ export default function Home() {
                     className="size-3 text-muted-foreground"
                     aria-hidden="true"
                   />
-                  {duration(selected.arrival - selected.departure)}
+                  {duration(trip.arrival - trip.departure)}
                 </span>
                 <span className="text-[10px] text-muted-foreground">
                   {t("details.timesNote")}
@@ -1560,49 +1323,49 @@ export default function Home() {
                   {t("details.arrival")}
                 </p>
                 <p className="mt-0.5 text-2xl font-semibold tracking-tight tabular-nums md:text-3xl">
-                  {detailTime.format(selected.arrival)}
+                  {detailTime.format(trip.arrival)}
                   {selected.number === "730F" && (
                     <span className="text-sm text-muted-foreground">*</span>
                   )}
                 </p>
                 <p className="text-[11px] text-muted-foreground tabular-nums">
-                  {detailDate.format(selected.arrival)}
+                  {detailDate.format(trip.arrival)}
                 </p>
               </div>
             </div>
             <div className="relative mx-1 mt-5">
               <Progress
-                value={selected.progress * 100}
+                value={trip.progress * 100}
                 aria-label={t("details.progress")}
                 className="h-1.5"
               />
               <span
-                className={`absolute bottom-full mb-1.5 flex flex-col ${selected.progress > 0.9 ? "-translate-x-[calc(100%-12px)] items-end" : selected.progress < 0.1 ? "-translate-x-3 items-start" : "-translate-x-1/2 items-center"}`}
-                style={{ left: `${selected.progress * 100}%` }}
+                className={`absolute bottom-full mb-1.5 flex flex-col ${trip.progress > 0.9 ? "-translate-x-[calc(100%-12px)] items-end" : trip.progress < 0.1 ? "-translate-x-3 items-start" : "-translate-x-1/2 items-center"}`}
+                style={{ left: `${trip.progress * 100}%` }}
               >
                 <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold leading-4 text-primary-foreground tabular-nums">
-                  {Math.round(selected.progress * 100)}%
+                  {Math.round(trip.progress * 100)}%
                 </span>
                 <span
-                  className={`-mt-1 size-2 rotate-45 rounded-[1px] bg-primary ${selected.progress > 0.9 ? "-translate-x-2" : selected.progress < 0.1 ? "translate-x-2" : ""}`}
+                  className={`-mt-1 size-2 rotate-45 rounded-[1px] bg-primary ${trip.progress > 0.9 ? "-translate-x-2" : trip.progress < 0.1 ? "translate-x-2" : ""}`}
                 />
               </span>
               <span
-                className={`absolute -top-1 left-0 size-3.5 -translate-x-1/2 rounded-full border-[3px] border-primary ${selected.progress > 0 ? "bg-primary" : "bg-card"}`}
+                className={`absolute -top-1 left-0 size-3.5 -translate-x-1/2 rounded-full border-[3px] border-primary ${trip.progress > 0 ? "bg-primary" : "bg-card"}`}
               />
-              {selected.progress > 0 && selected.progress < 1 && (
+              {trip.progress > 0 && trip.progress < 1 && (
                 <span
                   className="absolute -top-1 size-3.5 -translate-x-1/2 rounded-full border-[3px] border-primary bg-card ring-4 ring-primary/20"
-                  style={{ left: `${selected.progress * 100}%` }}
+                  style={{ left: `${trip.progress * 100}%` }}
                 />
               )}
               <span
-                className={`absolute -top-1 right-0 size-3.5 translate-x-1/2 rounded-full border-[3px] ${selected.progress >= 1 ? "border-primary bg-primary" : "border-muted-foreground/50 bg-card"}`}
+                className={`absolute -top-1 right-0 size-3.5 translate-x-1/2 rounded-full border-[3px] ${trip.progress >= 1 ? "border-primary bg-primary" : "border-muted-foreground/50 bg-card"}`}
               />
             </div>
             <div className="grid grid-cols-2 gap-5 text-[13px] font-medium leading-snug">
-              <p>{place(selected.from)}</p>
-              <p className="text-right">{place(selected.to)}</p>
+              <p>{place(trip.from)}</p>
+              <p className="text-right">{place(trip.to)}</p>
             </div>
           </Card>
           <div className="grid grid-cols-2 gap-2">
@@ -1615,10 +1378,10 @@ export default function Home() {
                   {t("details.avgSpeed")}
                 </p>
                 <p className="text-sm font-semibold tabular-nums">
-                  {selectedRoute
+                  {tripDistance !== undefined
                     ? Math.round(
-                        selectedRoute.distance /
-                          ((selected.arrival - selected.departure) / 3_600_000),
+                        tripDistance /
+                          ((trip.arrival - trip.departure) / 3_600_000),
                       )
                     : "-"}
                   <span className="ml-1 text-[10px] font-medium text-muted-foreground">
@@ -1636,7 +1399,7 @@ export default function Home() {
                   {t("details.distance")}
                 </p>
                 <p className="text-sm font-semibold tabular-nums">
-                  {selectedRoute ? Math.round(selectedRoute.distance) : "-"}
+                  {tripDistance !== undefined ? Math.round(tripDistance) : "-"}
                   <span className="ml-1 text-[10px] font-medium text-muted-foreground">
                     km
                   </span>
@@ -1651,10 +1414,9 @@ export default function Home() {
             </h3>
 
             <ol>
-              {detailStops.map((stop, index) => {
-                const passed =
-                  stop.progress !== null && selected.progress >= stop.progress;
-                const active = index === currentStopIndex;
+              {shownStops.map((stop, index) => {
+                const passed = stopPassed(stop);
+                const active = index === shownActive;
                 return (
                   <li
                     key={`${stop.name}-${index}`}
@@ -1663,12 +1425,12 @@ export default function Home() {
                     <span
                       className={`pt-2.5 text-xs tabular-nums ${passed ? "text-foreground" : "text-muted-foreground"}`}
                     >
-                      {detailTime.format(stop.arrival)}
+                      {detailTime.format(stop.arrival + legShift)}
                     </span>
                     <div className="relative flex justify-center">
-                      {index < detailStops.length - 1 && (
+                      {index < shownStops.length - 1 && (
                         <span
-                          className={`absolute top-5 bottom-0 w-px ${selected.progress >= (detailStops[index + 1].progress ?? Infinity) ? "bg-primary" : "bg-border"}`}
+                          className={`absolute top-5 bottom-0 w-px ${stopPassed(shownStops[index + 1]) ? "bg-primary" : "bg-border"}`}
                         />
                       )}
                       <span
@@ -1683,11 +1445,11 @@ export default function Home() {
                       >
                         {place(stop.name)}
                       </p>
-                      {index === 0 || index === detailStops.length - 1 ? (
+                      {index === 0 || index === shownStops.length - 1 ? (
                         <p className="mt-1 text-[10px] text-muted-foreground">
                           {index === 0
-                            ? t("details.firstStop")
-                            : t("details.lastStop")}
+                            ? t(legOn ? "details.legFrom" : "details.firstStop")
+                            : t(legOn ? "details.legTo" : "details.lastStop")}
                         </p>
                       ) : (
                         <p className="mt-1 text-[10px] text-muted-foreground">
@@ -1705,7 +1467,15 @@ export default function Home() {
               </p>
             )}
           </Card>
-          {selected.status !== "running" && (
+          {legOn && (
+            <p className="px-1 text-xs text-muted-foreground">
+              {t("details.fullRoute", {
+                a: place(selected.from),
+                b: place(selected.to),
+              })}
+            </p>
+          )}
+          {selected.status !== "running" && !legOn && (
             <Card className="flex-row items-center gap-3 rounded-2xl p-3 shadow-sm md:p-4">
               <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground">
                 <CalendarClock className="size-5" />
@@ -1825,7 +1595,7 @@ export default function Home() {
       {!isMobile && (
         <aside
           aria-label={t("map.listLabel")}
-          className="floating-surface absolute top-24 bottom-6 left-5 z-10 hidden w-80 flex-col overflow-hidden rounded-xl md:flex"
+          className={`floating-surface absolute top-24 left-5 z-10 hidden w-80 flex-col rounded-xl md:flex ${routeActive ? "bottom-6 overflow-hidden" : ""}`}
         >
           {trainList}
         </aside>
@@ -1941,7 +1711,13 @@ export default function Home() {
           style={
             sheetStyle && {
               ...sheetStyle,
-              height: sheetH ?? (detailsOpen ? "66dvh" : "58dvh"),
+              height:
+                sheetH ??
+                (detailsOpen
+                  ? "66dvh"
+                  : activeStation || routeActive
+                    ? "58dvh"
+                    : "max(23rem, 44dvh)"),
             }
           }
         >
