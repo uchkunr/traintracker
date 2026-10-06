@@ -54,6 +54,7 @@ interface OpenStreetMapRailMapProps {
   onError: () => void;
   onStationClick: (id: string) => void;
   onTrainClick: (number: string) => void;
+  onMapClick?: () => void;
   stationLabel: (name: string) => string;
   trainLabel: (number: string) => string;
 }
@@ -79,16 +80,16 @@ function routeUntil(route: RailRoute, progress: number): Coordinate[] {
 
 export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStreetMapRailMapProps>(function OpenStreetMapRailMap({
   network, stations, trains, selectedRoute, selectedProgress, selectedStationId,
-  selectedTrainId, palette, onReady, onError, onStationClick, onTrainClick, stationLabel, trainLabel,
+  selectedTrainId, palette, onReady, onError, onStationClick, onTrainClick, onMapClick, stationLabel, trainLabel,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<Marker[]>([]);
-  const callbacksRef = useRef({ onStationClick, onTrainClick });
+  const callbacksRef = useRef({ onStationClick, onTrainClick, onMapClick });
   const lifecycleRef = useRef({ onReady, onError });
   const [styleRevision, setStyleRevision] = useState(0);
 
-  useEffect(() => { callbacksRef.current = { onStationClick, onTrainClick }; }, [onStationClick, onTrainClick]);
+  useEffect(() => { callbacksRef.current = { onStationClick, onTrainClick, onMapClick }; }, [onStationClick, onTrainClick, onMapClick]);
   useEffect(() => { lifecycleRef.current = { onReady, onError }; }, [onReady, onError]);
 
   useImperativeHandle(ref, () => ({
@@ -121,6 +122,10 @@ export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStre
     attribution.textContent = "© OpenStreetMap contributors";
     container.appendChild(attribution);
     mapRef.current = map;
+    map.on("click", (event) => {
+      if ((event.originalEvent.target as HTMLElement).closest("button")) return;
+      callbacksRef.current.onMapClick?.();
+    });
     map.on("load", () => {
       setStyleRevision((revision) => revision + 1);
       lifecycleRef.current.onReady();
