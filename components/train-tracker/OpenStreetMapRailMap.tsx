@@ -144,7 +144,7 @@ export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStre
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded() || !network || !palette) return;
+    if (!map || styleRevision === 0 || !network || !palette) return;
     const data = {
       type: "Feature" as const,
       properties: {},
@@ -164,7 +164,7 @@ export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStre
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded() || !palette) return;
+    if (!map || styleRevision === 0 || !palette) return;
     for (const id of ["osm-selected-route-progress", "osm-selected-route-line"]) {
       if (map.getLayer(id)) map.removeLayer(id);
     }
@@ -173,9 +173,9 @@ export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStre
     }
     if (!selectedRoute) return;
     map.addSource("osm-selected-route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: selectedRoute.coordinates } } });
-    map.addLayer({ id: "osm-selected-route-line", type: "line", source: "osm-selected-route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#64748b", "line-width": 6 } });
+    map.addLayer({ id: "osm-selected-route-line", type: "line", source: "osm-selected-route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#64748b", "line-width": 8 } });
     map.addSource("osm-selected-route-progress", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: routeUntil(selectedRoute, selectedProgress) } } });
-    map.addLayer({ id: "osm-selected-route-progress", type: "line", source: "osm-selected-route-progress", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": palette.accent, "line-width": 6 } });
+    map.addLayer({ id: "osm-selected-route-progress", type: "line", source: "osm-selected-route-progress", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": palette.accent, "line-width": 8 } });
   }, [selectedRoute, palette, styleRevision]);
 
   useEffect(() => {
@@ -184,6 +184,15 @@ export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStre
     if (!source || !selectedRoute) return;
     source.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: routeUntil(selectedRoute, selectedProgress) } });
   }, [selectedProgress, selectedRoute]);
+
+  // While one train is selected only its route stays visible; the rest of the network is hidden.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    for (const id of ["osm-rail-network-line", "osm-rail-network-casing"]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", selectedRoute ? "none" : "visible");
+    }
+  }, [selectedRoute, network, palette, styleRevision]);
 
   useEffect(() => {
     const map = mapRef.current;

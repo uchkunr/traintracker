@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
-  ChevronRight,
   CalendarClock,
   Clock3,
   Gauge,
@@ -22,6 +21,7 @@ import {
   Ruler,
   Minus,
   Plus,
+  ArrowUpDown,
   Search,
   TrainFront,
   X,
@@ -184,6 +184,12 @@ export default function Home() {
   const [sheetH, setSheetH] = useState<number | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
+  const [routeField, setRouteField] = useState<"from" | "to">("from");
+  const [routeText, setRouteText] = useState({ from: "", to: "" });
+  const [routePick, setRoutePick] = useState<{
+    from: string | null;
+    to: string | null;
+  }>({ from: null, to: null });
   const [cookieChoice, setCookieChoice] = useState<string | null>("pending");
   const drag = useRef<{
     active: boolean;
@@ -464,12 +470,15 @@ export default function Home() {
     Number(status !== "running") +
     Number(category !== "all") +
     Number(region !== "all");
-  const filtersActive = Boolean(query) || filtersCount > 0;
+  const filtersActive =
+    Boolean(query) || filtersCount > 0 || Boolean(routePick.from || routePick.to);
   function resetFilters() {
     setQuery("");
     setStatus("running");
     setCategory("all");
     setRegion("all");
+    setRoutePick({ from: null, to: null });
+    setRouteText({ from: "", to: "" });
   }
   const visibleTrains = matchingTrains
     .filter((train) => status === "all" || train.status === status)
@@ -595,21 +604,50 @@ export default function Home() {
     ({ train }) =>
       stationView.type === "all" || trainType(train) === stationView.type,
   );
-  const citySuggestions =
-    search.length >= 2
+  // Trips that call at both stations in the right order, as the next 36 hours of departures.
+  const routeActive = Boolean(routePick.from && routePick.to);
+  const routeResults =
+    routeActive && now !== null
+      ? trains
+          .flatMap<{ train: ScheduledTrain; depart: number; arrive: number }>(
+            (train) => {
+              const stops = estimateStops(train);
+              const i = stops.findIndex((stop) => stop.name === routePick.from);
+              const j = stops.findIndex((stop) => stop.name === routePick.to);
+              if (i < 0 || j <= i) return [];
+              let depart =
+                i === 0
+                  ? stops[0].arrival
+                  : stops[i].arrival + stops[i].dwell * 60_000;
+              let arrive = stops[j].arrival;
+              if (
+                depart < now - 60_000 &&
+                train.nextDeparture > train.departure
+              ) {
+                const gap = train.nextDeparture - train.departure;
+                depart += gap;
+                arrive += gap;
+              }
+              return depart >= now - 60_000 && depart <= now + 36 * 3_600_000
+                ? [{ train, depart, arrive }]
+                : [];
+            },
+          )
+          .sort((a, b) => a.depart - b.depart)
+      : [];
+  const routeTyped = routeText[routeField]
+    .toLocaleLowerCase("uz")
+    .replace(/[‘’ʻʼ']/g, "");
+  const routeSuggestions =
+    routeTyped && !routePick[routeField]
       ? STATIONS.filter((station) =>
           [station.name, placeName(station.name, "en")]
             .join(" ")
             .toLocaleLowerCase("uz")
             .replace(/[‘’ʻʼ']/g, "")
-            .includes(search),
-        ).slice(0, 4)
+            .includes(routeTyped),
+        ).slice(0, 5)
       : [];
-  function openStation(station: (typeof STATIONS)[number]) {
-    setDetailsOpen(false);
-    setStationId(station.id);
-    mapRef.current?.flyTo(station.coordinates, viewPadding(true));
-  }
   // Keep the focused point clear of the floating list (left) and the detail/station sheet (right on desktop, bottom on mobile).
   function viewPadding(sheet: boolean) {
     return isMobile
@@ -647,6 +685,66 @@ export default function Home() {
       viewPadding(true),
     );
   }
+  // The chosen stations and the open train survive a refresh. Nothing is written until the saved
+  // value has been read, otherwise the empty first render would overwrite it.
+  const [viewRestored, setViewRestored] = useState(false);
+  const pendingTrain = useRef<string | null>(null);
+  // The age of the saved choice only moves when the choice itself changes, not on every refresh.
+  const savedView = useRef({ sig: "", at: 0 });
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem("traintracker-view") ?? "null");
+        const known = (name: unknown) =>
+          typeof name === "string" && STATIONS.some((station) => station.name === name)
+            ? name
+            : null;
+        // A choice older than 12 hours belongs to a past search, so it is dropped.
+        if (saved && Date.now() - Number(saved.savedAt) < 12 * 3_600_000) {
+          setRoutePick({ from: known(saved.from), to: known(saved.to) });
+          savedView.current = {
+            sig: `${known(saved.from)}|${known(saved.to)}|${typeof saved.train === "string" ? saved.train : null}`,
+            at: Number(saved.savedAt),
+          };
+          if (typeof saved.train === "string") pendingTrain.current = saved.train;
+        }
+      } catch {
+        /* Without saved data the page starts empty. */
+      }
+      setViewRestored(true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  useEffect(() => {
+    if (!viewRestored) return;
+    const train = detailsOpen ? selectedId : pendingTrain.current;
+    const sig = `${routePick.from}|${routePick.to}|${train}`;
+    if (sig !== savedView.current.sig)
+      savedView.current = { sig, at: Date.now() };
+    try {
+      localStorage.setItem(
+        "traintracker-view",
+        JSON.stringify({
+          from: routePick.from,
+          to: routePick.to,
+          train,
+          savedAt: savedView.current.at,
+        }),
+      );
+    } catch {
+      /* The choice only lasts for this visit. */
+    }
+  }, [viewRestored, routePick, detailsOpen, selectedId]);
+  useEffect(() => {
+    const number = pendingTrain.current;
+    if (!number || mapStatus !== "ready" || now === null) return;
+    const train = trains.find((item) => item.number === number);
+    pendingTrain.current = null;
+    if (train) selectTrain(train);
+    // selectTrain is recreated on every render; the pending ref makes this run once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapStatus, now, trains]);
+
   function changeStatus(nextStatus: string) {
     setStatus(nextStatus);
     if (nextStatus === "all") return;
@@ -676,7 +774,6 @@ export default function Home() {
             <ArrowLeft className="size-4" />
             {t("sheet.back")}
           </Button>
-          <Badge className="h-6 px-2.5">{t("station.badge")}</Badge>
         </div>
         <div className="mt-1 flex items-center gap-3">
           <div className="min-w-0 flex-1">
@@ -770,61 +867,107 @@ export default function Home() {
           {shownServices.length ? (
             shownServices.map(({ train, time, dwell, shifted }) => {
               const wait = now === null ? 0 : time - now;
-              const live = train.status === "running" && !shifted;
-              const other = place(
-                stationView.tab === "arrival" ? train.from : train.to,
-              );
+              const gap = shifted ? train.nextDeparture - train.departure : 0;
+              const here = place(activeStation.name);
+              const arrivalTab = stationView.tab === "arrival";
               const brand = TRAIN_INFO[train.number]?.brand;
               return (
                 <Button
                   key={`${train.number}-${time}`}
                   variant="ghost"
-                  className="h-auto w-full items-center justify-start gap-3 rounded-xl border bg-card px-3 py-3 text-left shadow-none hover:bg-accent/60"
+                  aria-label={t("list.rowLabel", { n: train.number })}
+                  aria-pressed={selectedId === train.number}
+                  data-highlighted={selectedId === train.number}
                   onClick={() => {
                     setStationId(null);
                     selectTrain(train);
                   }}
+                  className="group h-auto w-full items-stretch rounded-xl border bg-card px-3 py-3 text-left whitespace-normal shadow-none hover:bg-accent/60 focus-visible:bg-accent/60 active:bg-secondary data-[highlighted=true]:border-primary/30 data-[highlighted=true]:bg-accent"
                 >
-                  <span className="w-[4.5rem] shrink-0">
-                    <span className="block text-xl leading-none font-semibold tabular-nums">
-                      {detailTime.format(time)}
-                    </span>
-                    <span className="mt-1.5 block text-[11px] leading-none whitespace-nowrap text-muted-foreground tabular-nums">
-                      {wait < 60_000
-                        ? t("station.now")
-                        : wait < 3_600_000
-                          ? t("dur.m", { m: Math.round(wait / 60_000) })
-                          : wait < 6 * 3_600_000
-                            ? duration(wait)
-                            : t("dur.h", { h: Math.round(wait / 3_600_000) })}
-                    </span>
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] leading-tight font-semibold">
-                      {other}
-                    </span>
-                    <span className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                      {brand && <Badge className="h-5 px-2">{brand}</Badge>}
-                      <span className="font-semibold text-foreground tabular-nums">
-                        {train.number}
-                      </span>
-                      {dwell > 0 && (
-                        <span className="truncate">
-                          · {t("details.dwell", { n: dwell })}
+                  <span className="flex w-full flex-col gap-3">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="flex items-baseline gap-2">
+                        <span className="flex items-center gap-1.5 text-base font-semibold tracking-tight tabular-nums">
+                          <TramFront
+                            className="size-4 shrink-0 text-primary"
+                            aria-hidden="true"
+                          />
+                          № {train.number}
                         </span>
-                      )}
+                        {brand && (
+                          <span className="text-[11px] font-medium text-muted-foreground">
+                            {brand}
+                          </span>
+                        )}
+                      </span>
+                      <span className="shrink-0 text-xs font-medium whitespace-nowrap text-emerald-700 tabular-nums dark:text-emerald-400">
+                        {wait < 60_000
+                          ? t("station.now")
+                          : wait < 3_600_000
+                            ? t("dur.m", { m: Math.round(wait / 60_000) })
+                            : wait < 6 * 3_600_000
+                              ? duration(wait)
+                              : t("dur.h", { h: Math.round(wait / 3_600_000) })}
+                      </span>
                     </span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-1">
-                    <span
-                      className={`text-xs font-semibold ${live ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}
-                    >
-                      {live ? t("status.running") : t("status.waiting")}
+                    <span className="flex flex-col">
+                    <span className="grid grid-cols-[10px_1fr_auto] items-center gap-x-3 py-1.5">
+                      <span className="relative flex items-center justify-center self-stretch">
+                        <span className="absolute top-1/2 -bottom-px w-px bg-primary/30" />
+                        <span className="relative z-10 size-2.5 rounded-full border-2 border-primary bg-card" />
+                      </span>
+                      <span className="min-w-0 text-[13px] font-semibold">
+                        {arrivalTab ? place(train.from) : here}
+                      </span>
+                      <span className="flex items-baseline gap-1.5 tabular-nums">
+                        <span className="text-sm font-semibold">
+                          {detailTime.format(arrivalTab ? train.departure + gap : time)}
+                        </span>
+                        {now !== null &&
+                          detailDate.format(arrivalTab ? train.departure + gap : time) !== detailDate.format(now) && (
+                            <span className="text-[11px] text-muted-foreground">
+                              {detailDate.format(arrivalTab ? train.departure + gap : time).slice(5)}
+                            </span>
+                          )}
+                      </span>
                     </span>
-                    <ChevronRight
-                      className="size-4 text-muted-foreground"
-                      aria-hidden="true"
-                    />
+                    <span className="grid grid-cols-[10px_1fr_auto] items-center gap-x-3 py-1.5">
+                      <span className="relative flex items-center justify-center self-stretch">
+                        <span className="absolute -top-px bottom-1/2 w-px bg-primary/30" />
+                        <span className="relative z-10 size-2.5 rounded-full border-2 border-primary bg-primary" />
+                      </span>
+                      <span className="min-w-0 text-[13px] font-semibold">
+                        {arrivalTab ? here : place(train.to)}
+                      </span>
+                      <span className="flex items-baseline gap-1.5 tabular-nums">
+                        <span className="text-sm font-semibold">
+                          {detailTime.format(arrivalTab ? time : train.arrival + gap)}
+                        </span>
+                        {now !== null &&
+                          detailDate.format(arrivalTab ? time : train.arrival + gap) !== detailDate.format(now) && (
+                            <span className="text-[11px] text-muted-foreground">
+                              {detailDate.format(arrivalTab ? time : train.arrival + gap).slice(5)}
+                            </span>
+                          )}
+                      </span>
+                    </span>
+                    </span>
+                    {(dwell > 0 || train.price) && (
+                      <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground tabular-nums">
+                        <span>
+                          {dwell > 0 ? t("details.dwell", { n: dwell }) : ""}
+                        </span>
+                        {train.price ? (
+                          <span className="flex items-center gap-1 font-medium text-foreground">
+                            <Banknote
+                              className="size-3.5 text-muted-foreground"
+                              aria-hidden="true"
+                            />
+                            {money(train.price)}
+                          </span>
+                        ) : null}
+                      </span>
+                    )}
                   </span>
                 </Button>
               );
@@ -839,6 +982,120 @@ export default function Home() {
     </>
   );
 
+  const routeListJsx = (
+    <>
+      {routeResults.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          {t("route.none")}
+        </p>
+      ) : (
+        routeResults.map(({ train, depart, arrive }) => {
+          const wait = now === null ? 0 : depart - now;
+          const brand = TRAIN_INFO[train.number]?.brand;
+          return (
+            <Button
+              key={`${train.number}-${depart}`}
+              variant="ghost"
+              aria-label={t("list.rowLabel", { n: train.number })}
+              aria-pressed={selectedId === train.number}
+              data-highlighted={
+                selectedId === train.number || hoveredId === train.number
+              }
+              onMouseEnter={() => setHoveredId(train.number)}
+              onMouseLeave={() => setHoveredId(null)}
+              onFocus={() => setHoveredId(train.number)}
+              onBlur={() => setHoveredId(null)}
+              onClick={() => selectTrain(train)}
+              className="group h-auto w-full items-stretch rounded-xl border bg-card px-3 py-3 text-left whitespace-normal shadow-none hover:bg-accent/60 focus-visible:bg-accent/60 active:bg-secondary data-[highlighted=true]:border-primary/30 data-[highlighted=true]:bg-accent"
+            >
+              <span className="flex w-full flex-col gap-3">
+                <span className="flex items-center justify-between gap-2">
+                  <span className="flex items-baseline gap-2">
+                    <span className="flex items-center gap-1.5 text-base font-semibold tracking-tight tabular-nums">
+                      <TramFront
+                        className="size-4 shrink-0 text-primary"
+                        aria-hidden="true"
+                      />
+                      № {train.number}
+                    </span>
+                    {brand && (
+                      <span className="text-[11px] font-medium text-muted-foreground">
+                        {brand}
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-xs font-medium whitespace-nowrap text-emerald-700 tabular-nums dark:text-emerald-400">
+                    {wait < 60_000
+                      ? t("station.now")
+                      : wait < 3_600_000
+                        ? t("dur.m", { m: Math.round(wait / 60_000) })
+                        : wait < 6 * 3_600_000
+                          ? duration(wait)
+                          : t("dur.h", { h: Math.round(wait / 3_600_000) })}
+                  </span>
+                </span>
+                <span className="flex flex-col">
+                  <span className="grid grid-cols-[10px_1fr_auto] items-center gap-x-3 py-1.5">
+                    <span className="relative flex items-center justify-center self-stretch">
+                      <span className="absolute top-1/2 -bottom-px w-px bg-primary/30" />
+                      <span className="relative z-10 size-2.5 rounded-full border-2 border-primary bg-card" />
+                    </span>
+                    <span className="min-w-0 text-[13px] font-semibold">
+                      {place(routePick.from!)}
+                    </span>
+                    <span className="flex items-baseline gap-1.5 tabular-nums">
+                      <span className="text-sm font-semibold">
+                        {detailTime.format(depart)}
+                      </span>
+                      {now !== null &&
+                        detailDate.format(depart) !== detailDate.format(now) && (
+                          <span className="text-[11px] text-muted-foreground">
+                            {detailDate.format(depart).slice(5)}
+                          </span>
+                        )}
+                    </span>
+                  </span>
+                  <span className="grid grid-cols-[10px_1fr_auto] items-center gap-x-3 py-1.5">
+                    <span className="relative flex items-center justify-center self-stretch">
+                      <span className="absolute -top-px bottom-1/2 w-px bg-primary/30" />
+                      <span className="relative z-10 size-2.5 rounded-full border-2 border-primary bg-primary" />
+                    </span>
+                    <span className="min-w-0 text-[13px] font-semibold">
+                      {place(routePick.to!)}
+                    </span>
+                    <span className="flex items-baseline gap-1.5 tabular-nums">
+                      <span className="text-sm font-semibold">
+                        {detailTime.format(arrive)}
+                      </span>
+                      {now !== null &&
+                        detailDate.format(arrive) !== detailDate.format(now) && (
+                          <span className="text-[11px] text-muted-foreground">
+                            {detailDate.format(arrive).slice(5)}
+                          </span>
+                        )}
+                    </span>
+                  </span>
+                </span>
+                <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground tabular-nums">
+                  <span>{duration(arrive - depart)}</span>
+                  {train.price ? (
+                    <span className="flex items-center gap-1 font-medium text-foreground">
+                      <Banknote
+                        className="size-3.5 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                      {money(train.price)}
+                    </span>
+                  ) : null}
+                </span>
+              </span>
+            </Button>
+          );
+        })
+      )}
+    </>
+  );
+
   const trainList = (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="px-5 md:pt-5">
@@ -846,7 +1103,7 @@ export default function Home() {
           <h2 className="text-lg font-semibold tracking-tight">
             {t("list.title")}
           </h2>
-          {filtersActive ? (
+          {filtersActive && !routeActive ? (
             <button
               onClick={resetFilters}
               className="-mr-2 flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-primary transition-colors hover:bg-accent"
@@ -856,63 +1113,114 @@ export default function Home() {
             </button>
           ) : (
             <span className="text-xs text-muted-foreground tabular-nums">
-              {t("list.trips", { n: visibleTrains.length })}
+              {t("list.trips", {
+                n: routeActive ? routeResults.length : visibleTrains.length,
+              })}
             </span>
           )}
         </div>
-        <div className="flex gap-2">
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground md:top-3" />
-            <Input
-              aria-label={t("list.searchLabel")}
-              placeholder={t("list.searchPlaceholder")}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className="h-9 bg-card pl-9 pr-10 md:h-10"
-            />
-            {query && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-0 right-0 size-9 md:size-10"
-                aria-label={t("list.clearSearch")}
-                onClick={() => setQuery("")}
-              >
-                <X className="size-3.5" />
-              </Button>
-            )}
+        <div>
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1 space-y-2">
+                {(["from", "to"] as const).map((field) => (
+                  <div key={field} className="relative">
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none absolute top-1/2 left-3 size-2.5 -translate-y-1/2 rounded-full border-2 border-primary ${field === "to" ? "bg-primary" : "bg-card"}`}
+                    />
+                    <Input
+                      aria-label={t(field === "from" ? "route.from" : "route.to")}
+                      placeholder={t(
+                        field === "from" ? "route.from" : "route.to",
+                      )}
+                      value={
+                        routePick[field]
+                          ? place(routePick[field]!)
+                          : routeText[field]
+                      }
+                      onFocus={() => setRouteField(field)}
+                      onChange={(event) => {
+                        setRouteField(field);
+                        setRouteText({ ...routeText, [field]: event.target.value });
+                        setRoutePick({ ...routePick, [field]: null });
+                      }}
+                      className="h-9 bg-card pr-9 pl-8 md:h-10"
+                    />
+                    {(routePick[field] || routeText[field]) && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-0 right-0 size-9 md:size-10"
+                        aria-label={t("list.clearSearch")}
+                        onClick={(event) => {
+                          setRoutePick({ ...routePick, [field]: null });
+                          setRouteText({ ...routeText, [field]: "" });
+                          setRouteField(field);
+                          event.currentTarget.parentElement
+                            ?.querySelector("input")
+                            ?.focus();
+                        }}
+                      >
+                        <X className="size-3.5" />
+                      </Button>
+                    )}
+                    {routeField === field && routeSuggestions.length > 0 && (
+                      <ul className="absolute inset-x-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+                        {routeSuggestions.map((station) => (
+                          <li key={station.id}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRoutePick({ ...routePick, [field]: station.name });
+                                if (field === "from" && !routePick.to)
+                                  setRouteField("to");
+                              }}
+                              className="flex h-11 w-full items-center gap-2.5 px-3 text-left text-sm font-medium transition-colors hover:bg-accent active:bg-accent"
+                            >
+                              <MapPin
+                                className="size-4 shrink-0 text-primary"
+                                aria-hidden="true"
+                              />
+                              {place(station.name)}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-col gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-9 md:size-10"
+                  aria-label={t("route.swap")}
+                  onClick={() => {
+                    setRoutePick({ from: routePick.to, to: routePick.from });
+                    setRouteText({ from: routeText.to, to: routeText.from });
+                  }}
+                >
+                  <ArrowUpDown className="size-4" />
+                </Button>
+                  <Button
+                    variant={filtersOpen ? "secondary" : "outline"}
+                    size="icon"
+                    className="relative size-9 shrink-0 md:size-10"
+                    aria-label={t("list.filters")}
+                    aria-expanded={filtersOpen}
+                    onClick={() => setFiltersOpen((open) => !open)}
+                  >
+                    <SlidersHorizontal className="size-4" />
+                    {filtersCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground tabular-nums">
+                        {filtersCount}
+                      </span>
+                    )}
+                  </Button>
+              </div>
+            </div>
           </div>
-          <Button
-            variant={filtersOpen ? "secondary" : "outline"}
-            size="icon"
-            className="relative size-9 shrink-0 md:size-10"
-            aria-label={t("list.filters")}
-            aria-expanded={filtersOpen}
-            onClick={() => setFiltersOpen((open) => !open)}
-          >
-            <SlidersHorizontal className="size-4" />
-            {filtersCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground tabular-nums">
-                {filtersCount}
-              </span>
-            )}
-          </Button>
-        </div>
-        {citySuggestions.length > 0 && (
-          <div className="mt-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
-            {citySuggestions.map((station) => (
-              <button
-                key={station.id}
-                onClick={() => openStation(station)}
-                className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 text-xs font-semibold transition-colors hover:bg-accent"
-              >
-                <MapPin className="size-3.5 text-primary" aria-hidden="true" />
-                {place(station.name)}
-              </button>
-            ))}
-          </div>
-        )}
-
         {filtersOpen && (
           <>
             <div
@@ -1042,11 +1350,13 @@ export default function Home() {
       </div>
       <ScrollArea className="mt-2 min-h-0 flex-1 md:mt-3">
         <div className="space-y-2 px-4 pb-4">
+          {routeActive && routeListJsx}
           {now === null ? (
             <p role="status" className="p-5 text-sm text-muted-foreground">
               {t("list.loading")}
             </p>
           ) : (
+            !routeActive &&
             visibleTrains.length === 0 && (
               <div role="status" className="px-3 py-10 text-center">
                 <p className="text-sm font-medium">
@@ -1073,7 +1383,7 @@ export default function Home() {
               </div>
             )
           )}
-          {visibleTrains.map((train) => (
+          {(routeActive ? [] : visibleTrains).map((train) => (
             <Button
               key={train.number}
               variant="ghost"
@@ -1216,18 +1526,6 @@ export default function Home() {
           </Button>
           <div className="flex items-center gap-2">
             {info && <Badge className="h-6 px-2.5">{info.brand}</Badge>}
-            {(() => {
-              const key = selected.cancelled ? "cancelled" : selected.status;
-              const Icon = statusIcon[key];
-              return (
-                <span
-                  className={`flex items-center gap-1 text-xs font-semibold ${key === "cancelled" ? "text-red-600 dark:text-red-400" : statusText[key]}`}
-                >
-                  <Icon className="size-4" aria-hidden="true" />
-                  {t(`status.${key}` as MessageKey)}
-                </span>
-              );
-            })()}
           </div>
         </div>
         <div className="mt-1 flex items-center justify-between gap-3">
@@ -1528,7 +1826,7 @@ export default function Home() {
                   )
                   .flatMap(trainMarker)
           }
-          selectedRoute={selectedRoute}
+          selectedRoute={detailsOpen ? selectedRoute : undefined}
           selectedProgress={selected?.progress ?? 0}
           selectedStationId={stationId}
           selectedTrainId={selectedId}
