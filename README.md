@@ -1,36 +1,33 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TrainTracker.uz
 
-## Getting Started
-
-First, run the development server:
+Uzbekistan train map and timetable (O‘zbekiston poyezdlari xaritasi va jadvali). Built with Next.js, MapLibre and OpenFreeMap vector tiles.
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Languages and URLs
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Each language has its own crawlable URL: Uzbek (default) at the root, English under `/en`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Page | Uzbek | English |
+| --- | --- | --- |
+| Map | `/` | `/en` |
+| About | `/about` | `/en/about` |
+| All routes | `/trains` | `/en/trains` |
+| Route timetable | `/trains/<from>/<to>` | `/en/trains/<from>/<to>` |
 
-## Learn More
+`proxy.ts` rewrites the root to `/uz` internally and redirects a stray `/uz` URL back. A returning visitor who chose English (cookie `traintracker-lang`) is redirected to `/en`; crawlers carry no cookie and always get the default URLs.
 
-To learn more about Next.js, take a look at the following resources:
+## SEO
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Per-page `title`, `description`, canonical, `hreflang` (`uz`, `en`, `x-default`), Open Graph and Twitter cards (`lib/seo.ts`, `pageMetadata`).
+- JSON-LD: `WebSite`, `WebApplication`, `AboutPage`, `BreadcrumbList`, `ItemList` of `TrainTrip`.
+- `/sitemap.xml` lists every page in both languages with alternates, `/robots.txt` points to it.
+- Route pages (`lib/seo-routes.ts`) are generated for every pair of stations with at least 5 trains calling at both, from the timetable data.
+- Share image and Apple icon are static files in `public/` (`og-image.png` 1200x630, `apple-touch-icon.png`).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Environment variables (all optional):
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `NEXT_PUBLIC_SITE_URL`: the public address, used for canonical URLs, the sitemap and social cards. Defaults to `https://traintracker-beta.vercel.app`; set it when the final domain is in place.
+- `GOOGLE_SITE_VERIFICATION`, `YANDEX_SITE_VERIFICATION`: verification tokens for Search Console and Yandex Webmaster.

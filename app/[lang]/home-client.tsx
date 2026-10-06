@@ -64,6 +64,7 @@ import {
 import { STATION_INFO } from "@/lib/station-info";
 import { TRAIN_INFO } from "@/lib/trains-info";
 import { useLang } from "@/lib/use-lang";
+import { SEO, localePath } from "@/lib/seo";
 import { estimateStops, stopNames } from "@/lib/train-stops";
 
 const detailTime = new Intl.DateTimeFormat("uz", {
@@ -254,7 +255,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    document.title = translate(lang, "meta.title");
+    document.title = `${SEO[lang].siteName} | ${SEO[lang].title}`;
   }, [lang]);
 
   useEffect(() => {
@@ -1566,7 +1567,7 @@ export default function Home() {
         </h1>
         <div className="flex items-center gap-2">
           <Link
-            href="/about"
+            href={localePath(lang, "/about")}
             aria-label={t("about.link")}
             title={t("about.link")}
             className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

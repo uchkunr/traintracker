@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { ArrowLeft, ArrowUpRight, TrainFront } from "lucide-react";
 import { useLang } from "@/lib/use-lang";
+import { localePath } from "@/lib/seo";
 
 const COPY = {
   uz: {
@@ -79,7 +80,7 @@ export function AboutContent() {
     <main className="h-dvh overflow-y-auto bg-background text-foreground">
       <div className="mx-auto max-w-2xl px-3 pb-16 md:px-0">
         <header className="floating-surface sticky top-3 z-20 mt-3 flex h-16 items-center justify-between rounded-xl px-4 md:top-5 md:mt-5 md:px-5">
-          <Link href="/" className="flex items-center gap-2.5 text-lg font-semibold tracking-tight" aria-label={c.back}>
+          <Link href={localePath(lang)} className="flex items-center gap-2.5 text-lg font-semibold tracking-tight" aria-label={c.back}>
             <ArrowLeft className="size-4 text-muted-foreground" aria-hidden="true" />
             <TrainFront className="size-5 text-primary" aria-hidden="true" />
             <span>TrainTracker<span className="text-muted-foreground">.uz</span></span>
