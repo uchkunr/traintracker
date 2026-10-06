@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, CalendarClock, Check, Clock3, Gauge, ListFilter, LocateFixed, MapPin, Zap, TriangleAlert, Ruler, Minus, Monitor, Moon, Plus, Search, Sun, TrainFront, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, Clock3, Gauge, LocateFixed, MapPin, TriangleAlert, Ruler, Minus, Plus, Search, TrainFront, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,10 +22,11 @@ const detailTime = new Intl.DateTimeFormat("uz", { timeZone: "Asia/Tashkent", ho
 const detailDate = new Intl.DateTimeFormat("uz", { timeZone: "Asia/Tashkent", day: "2-digit", month: "2-digit", year: "numeric" });
 
 const statusLabels = { running: "Yo‘lda", waiting: "Kutilmoqda", arrived: "Yetib keldi" };
-const statusClasses = {
-  running: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 [&>span]:bg-emerald-500",
-  waiting: "bg-amber-500/15 text-amber-700 dark:text-amber-300 [&>span]:bg-amber-500",
-  arrived: "bg-sky-500/15 text-sky-700 dark:text-sky-300 [&>span]:bg-sky-500",
+const SHEET_TRANSITION = "transform 200ms ease-in-out, opacity 200ms ease-in-out, height 380ms cubic-bezier(0.32, 0.72, 0, 1)";
+const statusText = {
+  running: "text-emerald-600 dark:text-emerald-400",
+  waiting: "text-amber-600 dark:text-amber-400",
+  arrived: "text-muted-foreground",
 };
 
 export default function Home() {
@@ -38,13 +38,11 @@ export default function Home() {
   const routes = useMemo(() => network ? buildRoutes(network, electricLines ?? undefined) : {}, [network, electricLines]);
   const trains = useMemo(() => now === null ? [] : SCHEDULE.map((train) => getServiceState(train, now)), [now]);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("waiting");
+  const [status, setStatus] = useState("all");
   const [category, setCategory] = useState<"all" | "intercity" | "electric">("all");
   const [region, setRegion] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [themeChoice, setThemeChoice] = useState("system");
-  const [systemDark, setSystemDark] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -52,13 +50,11 @@ export default function Home() {
   const [mapStatus, setMapStatus] = useState<"loading" | "ready" | "error">("loading");
   const [mapAttempt, setMapAttempt] = useState(0);
   const [sheetH, setSheetH] = useState<number | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const drag = useRef({ startY: 0, startH: 0, lastY: 0, lastT: 0, velocity: 0 });
+  const drag = useRef<{ active: boolean; sheet: HTMLElement | null; startY: number; startH: number; h: number; lastY: number; lastT: number; velocity: number; frame: number }>({ active: false, sheet: null, startY: 0, startH: 0, h: 0, lastY: 0, lastT: 0, velocity: 0, frame: 0 });
   const chipDrag = useRef({ active: false, startX: 0, startLeft: 0, moved: false });
-  const theme = themeChoice === "system" ? (systemDark ? "dark" : "light") : themeChoice === "dark" ? "dark" : "light";
   useEffect(() => {
     const frame = requestAnimationFrame(() => setNow(Date.now()));
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    const timer = window.setInterval(() => { if (!drag.current.active) setNow(Date.now()); }, 1000);
     const controller = new AbortController();
     fetch("/railways.geojson", { signal: controller.signal })
       .then((response) => { if (!response.ok) throw new Error("Rail geometry unavailable"); return response.json(); })
@@ -73,30 +69,16 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const colorScheme = window.matchMedia("(prefers-color-scheme: dark)");
     const mobile = window.matchMedia("(max-width: 767px)");
-    const sync = () => { setSystemDark(colorScheme.matches); setIsMobile(mobile.matches); };
+    const sync = () => setIsMobile(mobile.matches);
     const frame = requestAnimationFrame(() => {
       sync();
-      try {
-        const saved = localStorage.getItem("traintracker-theme");
-        if (saved === "light" || saved === "dark" || saved === "system") setThemeChoice(saved);
-      } catch { /* System theme still works when storage is unavailable. */ }
-    });
-    colorScheme.addEventListener("change", sync);
-    mobile.addEventListener("change", sync);
-    return () => { cancelAnimationFrame(frame); colorScheme.removeEventListener("change", sync); mobile.removeEventListener("change", sync); };
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
-    document.documentElement.style.colorScheme = theme;
-    const frame = requestAnimationFrame(() => {
       const styles = getComputedStyle(document.documentElement);
       setPalette({ accent: styles.getPropertyValue("--rail-active").trim(), rail: styles.getPropertyValue("--rail-track").trim(), casing: styles.getPropertyValue("--rail-casing").trim() });
     });
-    return () => cancelAnimationFrame(frame);
-  }, [theme]);
+    mobile.addEventListener("change", sync);
+    return () => { cancelAnimationFrame(frame); mobile.removeEventListener("change", sync); };
+  }, []);
 
   useEffect(() => {
     if (mapStatus !== "ready" || !navigator.geolocation) return;
@@ -119,34 +101,44 @@ export default function Home() {
     return () => cancelAnimationFrame(frame);
   }, [listOpen, stationId, detailsOpen]);
 
-  const sheetStyle = isMobile ? { height: sheetH ?? "58dvh", transition: `transform 200ms ease-in-out, opacity 200ms ease-in-out${dragging ? "" : ", height 350ms cubic-bezier(0.32, 0.72, 0, 1)"}` } : undefined;
+  const sheetStyle = isMobile ? { height: sheetH ?? "58dvh", transition: SHEET_TRANSITION } : undefined;
+  // The drag writes the height straight to the DOM (one write per frame) so React does not re-render the map and list while the finger moves.
   const sheetHandle = (
     <div
       role="separator"
       aria-label="Panelni surish"
-      className="flex h-9 shrink-0 cursor-grab touch-none items-center justify-center active:cursor-grabbing"
+      className="flex h-10 shrink-0 cursor-grab touch-none items-center justify-center active:cursor-grabbing"
       onPointerDown={(event) => {
+        const sheet = event.currentTarget.parentElement as HTMLElement;
         event.currentTarget.setPointerCapture(event.pointerId);
-        const startH = (event.currentTarget.parentElement as HTMLElement).getBoundingClientRect().height;
-        drag.current = { startY: event.clientY, startH, lastY: event.clientY, lastT: performance.now(), velocity: 0 };
-        setSheetH(startH);
-        setDragging(true);
+        const startH = sheet.offsetHeight;
+        drag.current = { active: true, sheet, startY: event.clientY, startH, h: startH, lastY: event.clientY, lastT: performance.now(), velocity: 0, frame: 0 };
+        sheet.style.transition = "transform 200ms ease-in-out, opacity 200ms ease-in-out";
       }}
       onPointerMove={(event) => {
-        if (!dragging) return;
-        const d = drag.current, now = performance.now();
-        d.velocity = (d.lastY - event.clientY) / Math.max(1, now - d.lastT);
-        d.lastY = event.clientY; d.lastT = now;
-        setSheetH(Math.min(window.innerHeight * 0.92, Math.max(96, d.startH + d.startY - event.clientY)));
+        const d = drag.current;
+        if (!d.active || !d.sheet) return;
+        const at = performance.now();
+        d.velocity = (d.lastY - event.clientY) / Math.max(1, at - d.lastT);
+        d.lastY = event.clientY; d.lastT = at;
+        d.h = Math.min(window.innerHeight * 0.92, Math.max(96, d.startH + d.startY - event.clientY));
+        if (!d.frame) d.frame = requestAnimationFrame(() => { d.frame = 0; if (d.sheet) d.sheet.style.height = `${d.h}px`; });
       }}
       onPointerUp={() => {
-        if (!dragging) return;
+        const d = drag.current;
+        if (!d.active || !d.sheet) return;
+        d.active = false;
+        cancelAnimationFrame(d.frame); d.frame = 0;
         const snaps = [130, window.innerHeight * 0.5, window.innerHeight * 0.9];
-        const projected = (sheetH ?? drag.current.startH) + drag.current.velocity * 220;
-        setSheetH(snaps.reduce((best, snap) => Math.abs(snap - projected) < Math.abs(best - projected) ? snap : best));
-        setDragging(false);
+        const projected = d.h + d.velocity * 220;
+        const snap = snaps.reduce((best, value) => Math.abs(value - projected) < Math.abs(best - projected) ? value : best);
+        d.sheet.style.height = `${d.h}px`;
+        d.sheet.style.transition = SHEET_TRANSITION;
+        void d.sheet.offsetHeight;
+        d.sheet.style.height = `${snap}px`;
+        setSheetH(snap);
       }}
-      onPointerCancel={() => setDragging(false)}
+      onPointerCancel={() => { drag.current.active = false; cancelAnimationFrame(drag.current.frame); }}
     ><span className="h-1 w-9 rounded-full bg-border" /></div>
   );
 
@@ -169,6 +161,9 @@ export default function Home() {
   const matchingTrains = categoryTrains.filter((train) =>
     `${train.number} ${train.from} ${train.via.join(" ")} ${stopNames(train.number).join(" ")} ${train.to}`.toLocaleLowerCase("uz").replace(/[‘’ʻʼ']/g, "").includes(search),
   );
+  const statusCounts = { all: matchingTrains.length, running: matchingTrains.filter((train) => train.status === "running").length, waiting: matchingTrains.filter((train) => train.status === "waiting").length, arrived: matchingTrains.filter((train) => train.status === "arrived").length } as Record<string, number>;
+  const filtersActive = Boolean(query) || status !== "all" || category !== "all" || region !== "all";
+  function resetFilters() { setQuery(""); setStatus("all"); setCategory("all"); setRegion("all"); }
   const visibleTrains = matchingTrains.filter((train) => status === "all" || train.status === status).sort((a, b) => statusOrder[a.status] - statusOrder[b.status] || sortKey(a) - sortKey(b));
   const electricRegions = [...new Set(ELECTRIC_ROUTES.map((route) => route.region))];
   const focused = detailsOpen ? selected : undefined;
@@ -224,21 +219,13 @@ export default function Home() {
   const trainList = (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="px-5 pt-5">
-        <div className="mb-4 flex items-baseline justify-between"><h2 className="text-lg font-semibold tracking-tight">Poyezdlar</h2><span className="text-xs text-muted-foreground tabular-nums">{visibleTrains.length} ta reys</span></div>
-        <div role="tablist" aria-label="Poyezd turi" className="mb-3 grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
-          {([["all", "Barchasi", trains.length], ["intercity", "Uzoq", trains.filter((train) => !train.kind).length], ["electric", "Elektr", trains.filter((train) => train.kind).length]] as const).map(([value, label, count]) => <button key={value} role="tab" aria-selected={category === value} onClick={() => { setCategory(value); setRegion("all"); }} className={`flex h-9 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors ${category === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{value === "electric" && <Zap className="size-3.5" />}{label}<span className="tabular-nums opacity-60">{count}</span></button>)}
+        <div className="mb-3 flex h-8 items-center justify-between"><h2 className="text-lg font-semibold tracking-tight">Poyezdlar</h2>{filtersActive ? <button onClick={resetFilters} className="-mr-2 flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-primary transition-colors hover:bg-accent"><X className="size-3" />Tozalash</button> : <span className="text-xs text-muted-foreground tabular-nums">{visibleTrains.length} ta reys</span>}</div>
+        <div className="relative"><Search className="pointer-events-none absolute top-3 left-3 size-4 text-muted-foreground" /><Input aria-label="Poyezdni qidirish" placeholder="Poyezd yoki shahar" value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 bg-card pl-9 pr-10" />{query && <Button variant="ghost" size="icon" className="absolute top-0 right-0 size-10" aria-label="Qidiruvni tozalash" onClick={() => setQuery("")}><X className="size-3.5" /></Button>}</div>
+        <div role="tablist" aria-label="Poyezd turi" className="mt-3 grid grid-cols-[1fr_0.8fr_1.5fr] gap-1 rounded-lg bg-muted p-1">
+          {([["all", "Barchasi", trains.length], ["intercity", "Uzoq", trains.filter((train) => !train.kind).length], ["electric", "Shahar atrofi", trains.filter((train) => train.kind).length]] as const).map(([value, label, count]) => <button key={value} role="tab" aria-selected={category === value} onClick={() => { setCategory(value); setRegion("all"); }} className={`flex h-8 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors ${category === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}<span className="tabular-nums opacity-60">{count}</span></button>)}
         </div>
-        <div className="flex gap-2">
-          <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute top-3 left-3 size-4 text-muted-foreground" /><Input aria-label="Poyezdni qidirish" placeholder="Poyezd yoki shahar" value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 bg-card pl-9 pr-10" />{query && <Button variant="ghost" size="icon" className="absolute top-0 right-0 size-10" aria-label="Qidiruvni tozalash" onClick={() => setQuery("")}><X className="size-3.5" /></Button>}</div>
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="outline" size="icon" className="relative size-10 shrink-0 bg-card" aria-label="Holat bo‘yicha filtrlash" />}><ListFilter className="size-4" />{status !== "all" && <span className="absolute top-1.5 right-1.5 size-2 rounded-full border-2 border-card bg-primary" />}</DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuRadioGroup value={status} onValueChange={(value) => changeStatus(String(value))}>
-                <DropdownMenuLabel>Poyezd holati</DropdownMenuLabel>
-                {[["all", "Barchasi"], ["running", "Yo‘lda"], ["waiting", "Kutilmoqda"], ["arrived", "Yetib keldi"]].map(([value, label]) => <DropdownMenuRadioItem key={value} value={value} className="min-h-9">{label}</DropdownMenuRadioItem>)}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div role="group" aria-label="Poyezd holati" className="mt-3 grid grid-cols-4 gap-1.5">
+          {([["all", "Hammasi"], ["running", "Yo‘lda"], ["waiting", "Kutilmoqda"], ["arrived", "Yetib keldi"]] as const).map(([value, label]) => <button key={value} aria-pressed={status === value} onClick={() => changeStatus(value)} className={`flex min-h-12 flex-col items-center justify-center rounded-lg border px-1 py-1.5 transition-colors ${status === value ? "border-primary bg-accent text-accent-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground"}`}><span className="flex items-center gap-1 text-base leading-none font-semibold text-foreground tabular-nums">{statusCounts[value]}</span><span className="mt-1.5 text-[10.5px] leading-none">{label}</span></button>)}
         </div>
         {category === "electric" && <div
           className="-mx-5 mt-3 flex cursor-grab touch-pan-x gap-1.5 overflow-x-auto px-5 pb-1 select-none [scrollbar-width:none] [mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%-32px),transparent)] active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
@@ -251,10 +238,10 @@ export default function Home() {
         >{["all", ...electricRegions].map((name) => <button key={name} onClick={() => setRegion(name)} aria-pressed={region === name} className={`h-8 shrink-0 rounded-full border px-3 text-xs font-medium transition-colors ${region === name ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground"}`}>{name === "all" ? "Hammasi" : name}</button>)}</div>}
       </div>
       <ScrollArea className="mt-3 min-h-0 flex-1"><div className="px-2 pb-3">
-          {now === null ? <p role="status" className="p-5 text-sm text-muted-foreground">Jadval yuklanmoqda</p> : visibleTrains.length === 0 && <div role="status" className="px-3 py-10 text-center"><p className="text-sm font-medium">Poyezd topilmadi</p><Button variant="link" className="mt-2 h-10" onClick={() => { setQuery(""); setStatus("all"); }}>Filtrlarni tozalash</Button></div>}
-          {visibleTrains.map((train) => <Button key={train.number} variant="ghost" aria-label={`${train.number} poyezdi haqida`} aria-pressed={selectedId === train.number} data-highlighted={selectedId === train.number || hoveredId === train.number} onMouseEnter={() => setHoveredId(train.number)} onMouseLeave={() => setHoveredId(null)} onFocus={() => setHoveredId(train.number)} onBlur={() => setHoveredId(null)} onClick={() => selectTrain(train)} className="train-row group h-auto w-full items-stretch rounded-md border-l-2 border-l-transparent px-3 py-4 text-left whitespace-normal">
+          {now === null ? <p role="status" className="p-5 text-sm text-muted-foreground">Jadval yuklanmoqda</p> : visibleTrains.length === 0 && <div role="status" className="px-3 py-10 text-center"><p className="text-sm font-medium">{matchingTrains.length ? "Bu holatda poyezd yo‘q" : "Poyezd topilmadi"}</p>{matchingTrains.length > 0 && <p className="mt-1 text-xs text-muted-foreground">Boshqa holatlarda {matchingTrains.length} ta poyezd bor.</p>}<Button variant="link" className="mt-2 h-10" onClick={() => matchingTrains.length ? setStatus("all") : resetFilters()}>{matchingTrains.length ? "Hammasini ko‘rsatish" : "Filtrlarni tozalash"}</Button></div>}
+          {visibleTrains.map((train) => <Button key={train.number} variant="ghost" aria-label={`${train.number} poyezdi haqida`} aria-pressed={selectedId === train.number} data-highlighted={selectedId === train.number || hoveredId === train.number} onMouseEnter={() => setHoveredId(train.number)} onMouseLeave={() => setHoveredId(null)} onFocus={() => setHoveredId(train.number)} onBlur={() => setHoveredId(null)} onClick={() => selectTrain(train)} className="train-row group h-auto w-full items-stretch rounded-md px-3 py-4 text-left whitespace-normal">
             <span className="flex w-full flex-col gap-3">
-              <span className="flex items-center justify-between gap-2"><span className="flex items-baseline gap-2"><span className="text-base font-semibold tracking-tight tabular-nums">№ {train.number}</span>{TRAIN_INFO[train.number] && <span className="text-[11px] font-normal text-muted-foreground">{TRAIN_INFO[train.number]!.brand}</span>}{train.kind && <span className="flex items-center gap-0.5 text-[11px] font-normal text-muted-foreground"><Zap className="size-3" />Elektr</span>}</span>{train.cancelled ? <span className="flex items-center gap-1.5 rounded-full bg-red-500/15 px-2 py-1 text-[11px] font-medium text-red-700 dark:text-red-300"><TriangleAlert className="size-3" />Bekor qilingan</span> : <span className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium ${statusClasses[train.status]}`}><span className="size-1.5 rounded-full" />{statusLabels[train.status]}</span>}</span>
+              <span className="flex items-center justify-between gap-2"><span className="flex items-baseline gap-2"><span className="text-base font-semibold tracking-tight tabular-nums">№ {train.number}</span>{TRAIN_INFO[train.number] && <span className="text-[11px] font-normal text-muted-foreground">{TRAIN_INFO[train.number]!.brand}</span>}{train.kind && <span className="text-[11px] font-normal text-muted-foreground">Shahar atrofi</span>}</span><span className={`shrink-0 text-xs font-medium tabular-nums ${train.cancelled ? "text-red-600 dark:text-red-400" : statusText[train.status]}`}>{train.cancelled ? "Bekor qilingan" : train.status === "running" ? `${statusLabels.running} · ${Math.round(train.progress * 100)}%` : statusLabels[train.status]}</span></span>
               <span className="flex items-center gap-2 text-[13px] font-semibold"><span className="min-w-0 flex-1">{train.from}</span><ArrowRight className="size-3.5 shrink-0 text-primary" /><span className="min-w-0 flex-1 text-right">{train.to}</span></span>
               <span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground tabular-nums"><Clock3 className="size-3.5 shrink-0" /><span className="min-w-0 flex-1">{train.status === "running" ? `Kelish: ${formatDateTime(train.arrival)}` : train.status === "waiting" ? `Jo‘nash: ${formatDateTime(train.departure)}` : `Keyingi jo‘nash: ${formatDateTime(train.nextDeparture)}`}</span>{train.price && <span className="shrink-0 font-medium text-foreground">{train.price.toLocaleString("ru-RU").replace(/\s| /g, " ")} so‘m</span>}</span>
             </span>
@@ -286,7 +273,6 @@ export default function Home() {
 
       <header className="floating-surface absolute inset-x-3 top-3 z-20 flex h-16 items-center justify-between rounded-xl px-4 md:inset-x-5 md:top-5 md:px-5">
         <h1 className="flex items-center gap-2.5 text-lg font-semibold tracking-tight"><TrainFront className="size-5 text-primary" aria-hidden="true" />TrainTracker<span className="-ml-2 text-muted-foreground">.uz</span></h1>
-        <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-10" aria-label="Mavzuni tanlash" />}>{themeChoice === "system" ? <Monitor className="size-4" /> : theme === "dark" ? <Moon className="size-4" /> : <Sun className="size-4" />}</DropdownMenuTrigger><DropdownMenuContent align="end" className="floating-surface min-w-40">{[["light", "Yorug‘"], ["dark", "Qorong‘i"], ["system", "Tizimga mos"]].map(([value, label]) => <DropdownMenuItem key={value} className="min-h-10 cursor-pointer" onClick={() => { setThemeChoice(value); try { localStorage.setItem("traintracker-theme", value); } catch { /* Theme selection remains available without storage. */ } }}><span className="flex-1">{label}</span>{themeChoice === value && <Check className="size-4" />}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu>
       </header>
 
       {!isMobile && <aside aria-label="Poyezdlar ro‘yxati" className="floating-surface absolute top-24 bottom-6 left-5 z-10 hidden w-80 flex-col overflow-hidden rounded-xl md:flex">{trainList}</aside>}
@@ -342,9 +328,9 @@ export default function Home() {
             <SheetHeader className={`gap-0 px-5 pb-5 ${isMobile ? "pt-1" : "pt-4"}`}>
               <div className="mb-5 flex items-center justify-between gap-3">
                 <SheetClose render={<Button variant="ghost" size="sm" className="-ml-2 gap-1.5 text-muted-foreground" />}><ArrowLeft className="size-4" />Orqaga</SheetClose>
-                {(info || selected.kind) && <Badge className="h-7 gap-1 px-3">{selected.kind && <Zap className="size-3.5" />}{info?.brand ?? "Elektropoyezd"}</Badge>}
+                {info && <Badge className="h-7 px-3">{info.brand}</Badge>}
               </div>
-              <div className="flex items-center justify-between gap-3"><SheetTitle className="text-4xl font-semibold tracking-tight tabular-nums">№ {selected.number}</SheetTitle>{selected.cancelled ? <span className="flex h-7 items-center gap-1.5 rounded-full bg-red-500/15 px-3 text-xs font-medium text-red-700 dark:text-red-300"><TriangleAlert className="size-3.5" />Bekor qilingan</span> : <span className={`flex h-7 items-center gap-1.5 rounded-full px-3 text-xs font-medium ${statusClasses[selected.status]}`}><span className="size-1.5 rounded-full" />{statusLabels[selected.status]}</span>}</div>
+              <div className="flex items-center justify-between gap-3"><SheetTitle className="text-4xl font-semibold tracking-tight tabular-nums">№ {selected.number}</SheetTitle></div>
               <SheetDescription render={<div />} className="mt-3 text-xs">
                 <div className="flex flex-wrap items-center gap-1" aria-label={`Qatnov kunlari: ${formatDays(selected.departDays)}`}>
                   {selected.departDays.kind === "weekdays"

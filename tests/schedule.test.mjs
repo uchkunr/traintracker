@@ -114,7 +114,7 @@ test('static real-rail geometry covers all domestic and Dushanbe services withou
 test('every theme token pair meets specified contrast thresholds', () => {
   const css=readFileSync(new URL('../app/globals.css',import.meta.url),'utf8');
   const luminance=(hex)=>hex.match(/[a-f0-9]{2}/gi).map((part)=>parseInt(part,16)/255).map((v)=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((s,v,i)=>s+v*[.2126,.7152,.0722][i],0);
-  for(const selector of [':root {','.dark {']) {
+  for(const selector of [':root {']) {
     const block=css.split(selector)[1].split('}')[0]; const tokens=Object.fromEntries([...block.matchAll(/--([\w-]+):\s*(#[a-f0-9]{6});/gi)].map((m)=>[m[1],m[2]]));
     for(const [a,b,min] of [['foreground','background',4.5],['muted-foreground','background',4.5],['primary','background',4.5],['primary-foreground','primary',4.5],['accent-foreground','accent',4.5],['input','background',3],['rail-active','rail-casing',3],['rail-track','rail-casing',3]]) {
       const x=luminance(tokens[a]),y=luminance(tokens[b]);const ratio=(Math.max(x,y)+.05)/(Math.min(x,y)+.05);

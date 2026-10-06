@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -96,33 +97,6 @@
   --chart-5: #c2d5c8;
 }
 
-.dark {
-  color-scheme: dark;
-  --background: #0f1216;
-  --foreground: #e8edf2;
-  --card: #171b21;
-  --card-foreground: #e8edf2;
-  --popover: #171b21;
-  --popover-foreground: #e8edf2;
-  --primary: #5fd0ae;
-  --primary-foreground: #062a1f;
-  --secondary: #212830;
-  --secondary-foreground: #e3e8ee;
-  --muted: #232a33;
-  --muted-foreground: #98a3b0;
-  --accent: #16322b;
-  --accent-foreground: #a6ead3;
-  --destructive: #f4a99e;
-  --warning: #e5ba74;
-  --border: #2a323c;
-  --input: #5e6874;
-  --ring: #5fd0ae;
-  --rail-active: #5fd0ae;
-  --rail-track: #8d9aa8;
-  --rail-casing: #0f1216;
-  --marker-shadow: #00000040;
-  --shadow-surface: 0 2px 4px #00000018, 0 12px 36px #00000024;
-}
 @layer base {
   .maplibregl-popup-content {
     @apply bg-transparent! shadow-none! p-0! rounded-none!;
@@ -179,7 +153,6 @@
   }
   .train-row { border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent); }
   .train-row:hover, .train-row:focus-visible, .train-row[data-highlighted="true"] { background: var(--accent); }
-  .train-row[data-highlighted="true"] { border-left-color: var(--primary); }
   .train-row:active { background: var(--secondary); }
   .train-marker { color: var(--primary); }
   .train-marker:hover, .train-marker[data-highlighted="true"], .train-marker[data-selected="true"] { background: var(--card); box-shadow: 0 0 0 1px var(--primary), var(--shadow-surface); }
