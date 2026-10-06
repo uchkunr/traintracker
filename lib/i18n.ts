@@ -251,11 +251,3 @@ export function placeName(name: string, lang: Lang) {
   const key = normalize(name);
   return PLACES_EN[key] ?? name;
 }
-
-export function initialLang(): Lang {
-  try {
-    const saved = localStorage.getItem("traintracker-lang");
-    if (saved === "uz" || saved === "en") return saved;
-  } catch { /* Fall back to the browser language when storage is unavailable. */ }
-  return typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("en") ? "en" : "uz";
-}

@@ -3,6 +3,9 @@ import Script from "next/script";
 import { Outfit, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { LangProvider } from "@/lib/use-lang";
+import { translate } from "@/lib/i18n";
+import { getLang } from "@/lib/server-lang";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -17,13 +20,18 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "TrainTracker.uz - Poyezdlar xaritasi",
-  description:
-    "O‘zbekiston poyezdlari, bekatlari va yo‘nalishlari xaritasi. Namoyish rejimi.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const lang = await getLang();
+  return {
+    title: translate(lang, "meta.title"),
+    description:
+      lang === "en"
+        ? "Map of Uzbekistan's trains, stations and routes. Demo mode."
+        : "O‘zbekiston poyezdlari, bekatlari va yo‘nalishlari xaritasi. Namoyish rejimi.",
+  };
+}
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -31,10 +39,11 @@ export default function RootLayout({
   const mapboxToken = process.env.MAPBOX_API_KEY;
   const yandexMapsKey = process.env.YANDEX_MAPS_KEY;
   const googleMapsKey = process.env.GMAP_API_KEY;
+  const lang = await getLang();
 
   return (
     <html
-      lang="uz"
+      lang={lang}
       className={`${outfit.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
@@ -52,7 +61,9 @@ export default function RootLayout({
         <meta name="traintracker-google-maps-key" content={googleMapsKey ?? ""} />
       </head>
       <body className={`${outfit.className} h-full w-full overflow-hidden flex flex-col bg-background text-foreground`}>
-        <TooltipProvider>{children}</TooltipProvider>
+        <LangProvider initial={lang}>
+          <TooltipProvider>{children}</TooltipProvider>
+        </LangProvider>
       </body>
     </html>
   );

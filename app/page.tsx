@@ -685,66 +685,6 @@ export default function Home() {
       viewPadding(true),
     );
   }
-  // The chosen stations and the open train survive a refresh. Nothing is written until the saved
-  // value has been read, otherwise the empty first render would overwrite it.
-  const [viewRestored, setViewRestored] = useState(false);
-  const pendingTrain = useRef<string | null>(null);
-  // The age of the saved choice only moves when the choice itself changes, not on every refresh.
-  const savedView = useRef({ sig: "", at: 0 });
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      try {
-        const saved = JSON.parse(localStorage.getItem("traintracker-view") ?? "null");
-        const known = (name: unknown) =>
-          typeof name === "string" && STATIONS.some((station) => station.name === name)
-            ? name
-            : null;
-        // A choice older than 12 hours belongs to a past search, so it is dropped.
-        if (saved && Date.now() - Number(saved.savedAt) < 12 * 3_600_000) {
-          setRoutePick({ from: known(saved.from), to: known(saved.to) });
-          savedView.current = {
-            sig: `${known(saved.from)}|${known(saved.to)}|${typeof saved.train === "string" ? saved.train : null}`,
-            at: Number(saved.savedAt),
-          };
-          if (typeof saved.train === "string") pendingTrain.current = saved.train;
-        }
-      } catch {
-        /* Without saved data the page starts empty. */
-      }
-      setViewRestored(true);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, []);
-  useEffect(() => {
-    if (!viewRestored) return;
-    const train = detailsOpen ? selectedId : pendingTrain.current;
-    const sig = `${routePick.from}|${routePick.to}|${train}`;
-    if (sig !== savedView.current.sig)
-      savedView.current = { sig, at: Date.now() };
-    try {
-      localStorage.setItem(
-        "traintracker-view",
-        JSON.stringify({
-          from: routePick.from,
-          to: routePick.to,
-          train,
-          savedAt: savedView.current.at,
-        }),
-      );
-    } catch {
-      /* The choice only lasts for this visit. */
-    }
-  }, [viewRestored, routePick, detailsOpen, selectedId]);
-  useEffect(() => {
-    const number = pendingTrain.current;
-    if (!number || mapStatus !== "ready" || now === null) return;
-    const train = trains.find((item) => item.number === number);
-    pendingTrain.current = null;
-    if (train) selectTrain(train);
-    // selectTrain is recreated on every render; the pending ref makes this run once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapStatus, now, trains]);
-
   function changeStatus(nextStatus: string) {
     setStatus(nextStatus);
     if (nextStatus === "all") return;
@@ -2064,6 +2004,7 @@ export default function Home() {
         open={!isMobile && detailsOpen}
         onOpenChange={setDetailsOpen}
         modal={false}
+        disablePointerDismissal
       >
         <SheetContent
           side="right"

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { ArrowLeft, ArrowUpRight, TrainFront } from "lucide-react";
 import { useLang } from "@/lib/use-lang";
 
@@ -70,6 +71,9 @@ export function AboutContent() {
   const [lang, setLang] = useLang();
 
   const c = COPY[lang];
+  useEffect(() => {
+    document.title = `${c.title} | TrainTracker.uz`;
+  }, [c.title]);
 
   return (
     <main className="h-dvh overflow-y-auto bg-background text-foreground">

@@ -1,26 +1,34 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { initialLang, type Lang } from "./i18n";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import type { Lang } from "./i18n";
 
-// One language choice for every page. It is saved only when the user picks a language,
-// so the first render (before the saved value is read) can never overwrite it.
-export function useLang(): [Lang, (lang: Lang) => void] {
-  const [lang, setLangState] = useState<Lang>("uz");
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => setLangState(initialLang()));
-    return () => cancelAnimationFrame(frame);
-  }, []);
+type LangValue = readonly [Lang, (lang: Lang) => void];
+
+const LangContext = createContext<LangValue>(["uz", () => {}]);
+
+// The language lives in one provider mounted in the root layout, so it survives navigation between
+// pages. The server reads the saved cookie, which means the very first paint already has the right language.
+export function LangProvider({ initial, children }: { initial: Lang; children: ReactNode }) {
+  const [lang, setLangState] = useState<Lang>(initial);
   useEffect(() => {
     document.documentElement.lang = lang;
   }, [lang]);
   const setLang = useCallback((next: Lang) => {
     setLangState(next);
-    try {
-      localStorage.setItem("traintracker-lang", next);
-    } catch {
-      /* The language choice still applies for this visit. */
-    }
+    document.cookie = `traintracker-lang=${next}; path=/; max-age=31536000; samesite=lax`;
   }, []);
-  return [lang, setLang];
+  const value = useMemo<LangValue>(() => [lang, setLang], [lang, setLang]);
+  return createElement(LangContext.Provider, { value }, children);
 }
+
+export const useLang = () => useContext(LangContext);

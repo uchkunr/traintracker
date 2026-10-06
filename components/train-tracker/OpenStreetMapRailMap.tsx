@@ -203,16 +203,17 @@ export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStre
     for (const station of stations) {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "group relative flex size-4 items-center justify-center focus:outline-none";
+      button.className = "group relative flex size-6 items-end justify-center focus:outline-none";
       button.setAttribute("aria-label", stationLabel(station.name));
-      const dot = document.createElement("span");
-      dot.className = `block rounded-full border-2 border-primary bg-card shadow-sm transition-transform group-hover:scale-125 ${selectedStationId === station.id ? "size-4 ring-4 ring-primary/20" : "size-3"}`;
+      const pin = document.createElement("span");
+      pin.className = `block origin-bottom text-primary drop-shadow-sm transition-transform group-hover:scale-110 ${selectedStationId === station.id ? "scale-125" : ""}`;
+      pin.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" fill="currentColor" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/><circle cx="12" cy="10" r="3" fill="#fff"/></svg>';
       const label = document.createElement("span");
       label.className = `map-label absolute top-full left-1/2 mt-1 -translate-x-1/2 whitespace-nowrap ${selectedStationId === station.id ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus:opacity-100"}`;
       label.textContent = station.name;
-      button.append(dot, label);
+      button.append(pin, label);
       button.addEventListener("click", () => callbacksRef.current.onStationClick(station.id));
-      markers.push(new maplibregl.Marker({ element: button, anchor: "center" }).setLngLat(station.coordinates).addTo(map));
+      markers.push(new maplibregl.Marker({ element: button, anchor: "bottom" }).setLngLat(station.coordinates).addTo(map));
     }
 
     for (const train of trains) {
@@ -220,7 +221,7 @@ export const OpenStreetMapRailMap = forwardRef<OpenStreetMapRailMapRef, OpenStre
       button.type = "button";
       button.className = `train-marker train-marker-solid relative flex size-9 items-center justify-center rounded-full border-2 border-card bg-primary text-primary-foreground shadow-md ${train.status === "running" ? "" : "opacity-55 grayscale"} ${selectedTrainId === train.number ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`;
       button.setAttribute("aria-label", trainLabel(train.number));
-      button.innerHTML = `<span class="train-direction pointer-events-none absolute -inset-1 flex justify-center" style="transform:rotate(${train.bearing}deg)"><span class="size-2 rotate-45 rounded-[2px] bg-primary"></span></span><svg class="train-shape relative" aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="15" x="5" y="3" rx="3"/><path d="M8 7h8M5 11h14M9 15h.01M15 15h.01M8 18l-2 3M16 18l2 3"/></svg>`;
+      button.innerHTML = `<span class="train-direction pointer-events-none absolute -inset-1 flex justify-center" style="transform:rotate(${train.bearing}deg)"><span class="size-2 rotate-45 rounded-[2px] bg-primary"></span></span><svg class="train-shape relative" aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.1V7a4 4 0 0 0 8 0V3.1"/><path d="m9 15-1-1"/><path d="m15 15 1-1"/><path d="M9 19c-2.8 0-5-2.2-5-5v-4a8 8 0 0 1 16 0v4c0 2.8-2.2 5-5 5Z"/><path d="m8 19-2 3"/><path d="m16 19 2 3"/></svg>`;
       button.addEventListener("click", () => callbacksRef.current.onTrainClick(train.number));
       markers.push(new maplibregl.Marker({ element: button, anchor: "center" }).setLngLat(train.coordinates).addTo(map));
     }
