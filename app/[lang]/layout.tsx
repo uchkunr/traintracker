@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { notFound } from "next/navigation";
 import { Outfit, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "../globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LangProvider } from "@/lib/use-lang";
@@ -94,6 +95,7 @@ export default async function RootLayout({
         <LangProvider initial={lang}>
           <TooltipProvider>{children}</TooltipProvider>
         </LangProvider>
+        <Analytics />
       </body>
     </html>
   );
