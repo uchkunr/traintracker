@@ -19,7 +19,6 @@ const COPY = {
       ["Oraliq bekatlar", "Yandex Rasp", "https://rasp.yandex.ru/"],
       ["Xarita", "OpenStreetMap", "https://www.openstreetmap.org/copyright"],
     ],
-    dataNote: "Jadval 2026-yil 6-oktabr holatiga.",
     liveTitle: "Real vaqt",
     live: "Poyezdlarda GPS yo‘q, joylashuv jadvaldan hisoblanadi. Bekatlarda to‘xtash vaqti hisobga olinadi, kechikishlar esa yo‘q.",
     formula: "progress = (hozir - bekatdan jo‘nash) / keyingi bekatgacha vaqt",
@@ -41,7 +40,6 @@ const COPY = {
       ["Intermediate stops", "Yandex Rasp", "https://rasp.yandex.ru/"],
       ["Map", "OpenStreetMap", "https://www.openstreetmap.org/copyright"],
     ],
-    dataNote: "Timetable as of 6 October 2026.",
     liveTitle: "Real time",
     live: "Trains are not tracked by GPS, so the position is worked out from the timetable. Station stops are included, delays are not.",
     formula: "progress = (now - left the stop) / time to the next stop",
@@ -96,7 +94,6 @@ export function AboutContent() {
                   </a>
                 </li>)}
               </ul>
-              <p className="mt-3 text-xs text-muted-foreground">{c.dataNote}</p>
             </Section>
 
             <Section title={c.liveTitle}>

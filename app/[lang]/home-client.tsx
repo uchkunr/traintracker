@@ -1630,7 +1630,6 @@ export default function Home() {
             </Card>
           )}
           <p className="px-1 text-[10px] text-muted-foreground">
-            {t("details.dataDate")}
             {selected.number === "730F" && t("details.unconfirmed")}
           </p>
         </div>
