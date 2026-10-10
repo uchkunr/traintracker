@@ -35,7 +35,7 @@ const COPY = {
     mapText: "Poyezdlarning hozirgi joylashuvini va yo‘nalishni xaritada kuzating.",
     reverse: "Teskari yo‘nalish",
     more: (a: string) => `${a} dan boshqa yo‘nalishlar`,
-    note: "Vaqtlar Toshkent vaqti (UTC+5) bo‘yicha. Oraliq bekatlardagi vaqtlar taxminiy. Chipta olishdan oldin eticket.railway.uz saytida tekshirib oling.",
+    note: "Vaqtlar Toshkent vaqti (UTC+5) bo‘yicha. Jadval 2026-yil 6-oktabr holatiga. Oraliq bekatlardagi vaqtlar taxminiy. Chipta olishdan oldin eticket.railway.uz saytida tekshirib oling.",
     home: "Bosh sahifa",
     all: "Barcha yo‘nalishlar",
     currency: "so‘m",
@@ -62,7 +62,7 @@ const COPY = {
     mapText: "Follow the trains and the route on the live map.",
     reverse: "Opposite direction",
     more: (a: string) => `More routes from ${a}`,
-    note: "Times are Tashkent time (UTC+5). Times at intermediate stops are estimates. Check eticket.railway.uz before you buy a ticket.",
+    note: "Times are Tashkent time (UTC+5). Timetable as of 6 October 2026. Times at intermediate stops are estimates. Check eticket.railway.uz before you buy a ticket.",
     home: "Home",
     all: "All routes",
     currency: "UZS",
@@ -210,7 +210,7 @@ export default async function RoutePage({ params }: Props) {
       <div className="mt-8 flex flex-col items-start gap-1 rounded-xl border bg-card p-4">
         <p className="text-sm font-semibold">{c.map}</p>
         <p className="text-sm text-muted-foreground">{c.mapText}</p>
-        <Link href={localePath(lang)} className="mt-2 inline-flex h-9 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground">
+        <Link href={`${localePath(lang)}?from=${pair.slug.from}&to=${pair.slug.to}`} className="mt-2 inline-flex h-9 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground">
           {c.map}
         </Link>
       </div>

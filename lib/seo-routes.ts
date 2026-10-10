@@ -1,4 +1,4 @@
-import { SCHEDULE, TIME_ZONE, getServiceState, type DayRule } from "./schedule";
+import { SCHEDULE, TIME_ZONE, getServiceState, localDateKey, type DayRule } from "./schedule";
 import { estimateStops } from "./train-stops";
 import { STATIONS, type Station } from "./train-data";
 import { TRAIN_INFO } from "./trains-info";
@@ -39,6 +39,13 @@ export interface RoutePair {
   trips: RouteTrip[];
 }
 
+// The running days are the origin's; a stop reached after midnight is served one (or more) days later.
+function shiftDays(rule: DayRule, days: number): DayRule {
+  if (!days || rule.kind === "daily") return rule;
+  if (rule.kind === "weekdays") return { kind: "weekdays", days: rule.days.map((day) => (day + days) % 7).sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)) };
+  return days % 2 ? { kind: rule.kind === "even" ? "odd" : "even" } : rule;
+}
+
 let cache: RoutePair[] | undefined;
 
 export function getRoutePairs(): RoutePair[] {
@@ -46,6 +53,7 @@ export function getRoutePairs(): RoutePair[] {
   const byName = new Map(STATIONS.map((station) => [station.name, station]));
   const pairs = new Map<string, RoutePair>();
   for (const entry of SCHEDULE) {
+    if (entry.cancelled) continue;
     const train = getServiceState(entry, REFERENCE_DAY);
     const stops = estimateStops(train);
     const info = TRAIN_INFO[train.number];
@@ -67,7 +75,7 @@ export function getRoutePairs(): RoutePair[] {
           arrive: clock.format(arrive),
           minutes: Math.round((arrive - depart) / 60_000),
           nextDay: arrive - depart > 0 && new Date(arrive + 5 * 3_600_000).getUTCDate() !== new Date(depart + 5 * 3_600_000).getUTCDate(),
-          days: train.departDays,
+          days: shiftDays(train.departDays, Math.round((Date.parse(localDateKey(depart)) - Date.parse(localDateKey(train.departure))) / 86_400_000)),
           // The fare is for the whole train route, so it is only shown when the page covers all of it.
           price: i === 0 && j === stops.length - 1 ? train.price : undefined,
           origin: train.from,

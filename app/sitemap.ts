@@ -13,7 +13,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority,
     alternates: { languages: { uz: absoluteUrl(localePath("uz", path)), en: absoluteUrl(localePath("en", path)) } },
   });
-  const pages = [page("/", 1, "daily"), page("/trains", 0.8, "weekly"), page("/about", 0.5, "monthly")];
+  const pages = [
+    page("/", 1, "daily"),
+    page("/trains", 0.8, "weekly"),
+    page("/about", 0.5, "monthly"),
+    page("/privacy", 0.2, "monthly"),
+    page("/terms", 0.2, "monthly"),
+  ];
   for (const pair of getRoutePairs()) pages.push(page(`/trains/${pair.slug.from}/${pair.slug.to}`, 0.7, "weekly"));
   // The English URLs get their own entries, so the sitemap lists every indexable URL once.
   return pages.flatMap((entry) => {

@@ -21,8 +21,11 @@ import {
   Search,
   TrainFront,
   X,
+  Share2,
+  Ticket,
+  Check,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -65,7 +68,8 @@ import { STATION_INFO } from "@/lib/station-info";
 import { TRAIN_INFO } from "@/lib/trains-info";
 import { useLang } from "@/lib/use-lang";
 import { SEO, localePath } from "@/lib/seo";
-import { estimateStops, stopNames } from "@/lib/train-stops";
+import { estimateStops, routeProgress, stopNames } from "@/lib/train-stops";
+import { slugify } from "@/lib/seo-routes";
 
 const detailTime = new Intl.DateTimeFormat("uz", {
   timeZone: "Asia/Tashkent",
@@ -79,9 +83,28 @@ const detailDate = new Intl.DateTimeFormat("uz", {
   month: "2-digit",
   year: "numeric",
 });
+// Day and month only (11.10), next to a time that is not today. en-GB gives the day first in every browser.
+const dayMonth = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Tashkent",
+  day: "2-digit",
+  month: "2-digit",
+});
+const shortDate = { format: (time: number) => dayMonth.format(time).replace("/", ".") };
 
 const SHEET_TRANSITION =
   "translate 420ms cubic-bezier(0.32, 0.72, 0, 1), transform 420ms cubic-bezier(0.32, 0.72, 0, 1), opacity 250ms ease-out, height 380ms cubic-bezier(0.32, 0.72, 0, 1)";
+// One tap fills the route search, so an empty panel still has something to start with.
+const POPULAR_ROUTES = [
+  ["Toshkent Markaziy", "Samarqand"],
+  ["Toshkent Markaziy", "Buxoro"],
+  ["Samarqand", "Toshkent Markaziy"],
+  ["Toshkent Markaziy", "Andijon"],
+  ["Buxoro", "Toshkent Markaziy"],
+] as const;
+const TICKET_SITE = {
+  intercity: "https://eticket.railway.uz/",
+  electric: "https://ticket.elektropoyezd.uz/",
+};
 type TrainType = "fast" | "regular" | "electric";
 const trainType = (train: ScheduledTrain): TrainType =>
   train.kind ? "electric" : TRAIN_INFO[train.number] ? "fast" : "regular";
@@ -135,7 +158,10 @@ export default function Home() {
   const t = (key: MessageKey, vars?: Record<string, string | number>) =>
     translate(lang, key, vars);
   const place = (name: string) => placeName(name, lang);
-  const num = (value: number) =>
+  // "Toshkent Markaziy" reads as "Toshkent" where only the city matters.
+  const cityName = (name: string) =>
+    place(name).replace(/ (Markaziy|Janubiy|Central|South)$/, "");
+  const num =(value: number) =>
     value.toLocaleString("ru-RU").replace(/\s/g, " ");
   const money = (value: number) => `${num(value)} ${t("currency")}`;
   const duration = (ms: number) => {
@@ -180,7 +206,7 @@ export default function Home() {
     from: string | null;
     to: string | null;
   }>({ from: null, to: null });
-  const [cookieChoice, setCookieChoice] = useState<string | null>("pending");
+  const [shared, setShared] = useState(false);
   const drag = useRef<{
     active: boolean;
     sheet: HTMLElement | null;
@@ -204,9 +230,14 @@ export default function Home() {
   });
   useEffect(() => {
     const frame = requestAnimationFrame(() => setNow(Date.now()));
+    // A hidden tab does no work; it catches up as soon as it is shown again.
     const timer = window.setInterval(() => {
-      if (!drag.current.active) setNow(Date.now());
+      if (!drag.current.active && !document.hidden) setNow(Date.now());
     }, 1000);
+    const wake = () => {
+      if (!document.hidden) setNow(Date.now());
+    };
+    document.addEventListener("visibilitychange", wake);
     const controller = new AbortController();
     fetch("/railways.geojson", { signal: controller.signal })
       .then((response) => {
@@ -250,8 +281,23 @@ export default function Home() {
     return () => {
       cancelAnimationFrame(frame);
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", wake);
       controller.abort();
     };
+  }, []);
+
+  // A shared link (/?from=samarqand&to=buxoro) opens with that route filled in. The query is removed
+  // afterwards, so a refresh still starts clean.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("from") && !params.has("to")) return;
+    const station = (slug: string | null) =>
+      STATIONS.find((item) => slug && slugify(item.name) === slug)?.name ?? null;
+    const frame = requestAnimationFrame(() => {
+      setRoutePick({ from: station(params.get("from")), to: station(params.get("to")) });
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+    });
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
@@ -263,6 +309,8 @@ export default function Home() {
     const sync = () => setIsMobile(mobile.matches);
     const frame = requestAnimationFrame(() => {
       sync();
+      // On a phone the route search is open from the start, so the first thing to do is visible.
+      if (mobile.matches) setListOpen(true);
       const styles = getComputedStyle(document.documentElement);
       setPalette({
         accent: styles.getPropertyValue("--rail-active").trim(),
@@ -282,25 +330,6 @@ export default function Home() {
     const frame = requestAnimationFrame(() => setSheetH(null));
     return () => cancelAnimationFrame(frame);
   }, [listOpen, stationId, detailsOpen]);
-
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      try {
-        setCookieChoice(localStorage.getItem("traintracker-cookies"));
-      } catch {
-        setCookieChoice(null);
-      }
-    });
-    return () => cancelAnimationFrame(frame);
-  }, []);
-  const answerCookies = (choice: "accepted" | "refused") => {
-    try {
-      localStorage.setItem("traintracker-cookies", choice);
-    } catch {
-      /* The choice only lasts for this visit. */
-    }
-    setCookieChoice(choice);
-  };
 
   useEffect(() => {
     if (!photoOpen) return;
@@ -455,7 +484,7 @@ export default function Home() {
   const search = query
     .trim()
     .toLocaleLowerCase("uz")
-    .replace(/[‘’ʻʼ']/g, "");
+    .replace(/[‘’ʻʼ'`´]/g, "");
   const statusOrder = { running: 0, waiting: 1, arrived: 2 };
   const sortKey = (train: ScheduledTrain) =>
     train.status === "running"
@@ -479,7 +508,7 @@ export default function Home() {
       .flatMap((name) => [name, placeName(name, "en")])
       .join(" ")
       .toLocaleLowerCase("uz")
-      .replace(/[‘’ʻʼ']/g, "")
+      .replace(/[‘’ʻʼ'`´]/g, "")
       .includes(search),
   );
   const filtersCount =
@@ -503,7 +532,13 @@ export default function Home() {
         statusOrder[a.status] - statusOrder[b.status] ||
         sortKey(a) - sortKey(b),
     );
-  const focused = detailsOpen ? selected : undefined;
+  // A route search opens the next run of a train that may already have arrived today. The map then shows
+  // that run waiting at its origin, as the panel does, not the finished one.
+  const shownSelected =
+    selected && legOn && leg && now !== null && now < leg.depart && selected.status === "arrived"
+      ? { ...selected, status: "waiting" as const, progress: 0 }
+      : selected;
+  const focused = detailsOpen ? shownSelected : undefined;
   const focusedStops = focused
     ? new Set(estimateStops(focused).map((stop) => stop.name))
     : null;
@@ -520,17 +555,26 @@ export default function Home() {
     coordinates: Coordinate;
     bearing: number;
   }[] {
+    // A cancelled service has no train on the line.
+    if (train.cancelled) return [];
     if (train.status === "running")
       return routes[train.number]
         ? [
             {
               number: train.number,
               status: train.status,
-              ...pointAlong(routes[train.number]!, train.progress),
+              ...pointAlong(
+                routes[train.number]!,
+                routeProgress(train, routes[train.number]!),
+              ),
             },
           ]
         : [];
-    const station = STATIONS.find((item) => item.name === train.from);
+    // A train that has arrived waits at its destination, one that has not left yet at its origin.
+    const station = STATIONS.find(
+      (item) =>
+        item.name === (train.status === "arrived" ? train.to : train.from),
+    );
     return station
       ? [
           {
@@ -613,9 +657,10 @@ export default function Home() {
     electric: tabBoard.filter(({ train }) => trainType(train) === "electric")
       .length,
   } as Record<string, number>;
+  // A type with nothing on this tab has no chip, so it cannot stay selected either.
+  const stationType = stationTypeCounts[stationView.type] ? stationView.type : "all";
   const shownServices = tabBoard.filter(
-    ({ train }) =>
-      stationView.type === "all" || trainType(train) === stationView.type,
+    ({ train }) => stationType === "all" || trainType(train) === stationType,
   );
   // Trips that call at both stations in the right order, as the next 36 hours of departures.
   const routeActive = Boolean(routePick.from && routePick.to);
@@ -659,17 +704,35 @@ export default function Home() {
   } as Record<string, number>;
   const routeTyped = routeText[routeField]
     .toLocaleLowerCase("uz")
-    .replace(/[‘’ʻʼ']/g, "");
+    .replace(/[‘’ʻʼ'`´]/g, "");
   const routeSuggestions =
     routeTyped && !routePick[routeField]
       ? STATIONS.filter((station) =>
           [station.name, placeName(station.name, "en")]
             .join(" ")
             .toLocaleLowerCase("uz")
-            .replace(/[‘’ʻʼ']/g, "")
+            .replace(/[‘’ʻʼ'`´]/g, "")
             .includes(routeTyped),
         ).slice(0, 4)
       : [];
+  async function shareRoute() {
+    if (!routePick.from || !routePick.to) return;
+    const url = `${window.location.origin}${localePath(lang)}?from=${slugify(routePick.from)}&to=${slugify(routePick.to)}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${place(routePick.from)} → ${place(routePick.to)}`,
+          url,
+        });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setShared(true);
+      window.setTimeout(() => setShared(false), 2000);
+    } catch {
+      /* The share sheet was closed or the clipboard is blocked. */
+    }
+  }
   // Keep the focused point clear of the floating list (left) and the detail/station sheet (right on desktop, bottom on mobile).
   function viewPadding(sheet: boolean) {
     return isMobile
@@ -687,7 +750,12 @@ export default function Home() {
     setListOpen(isMobile);
     setDetailsOpen(true);
     if (train.status !== "running") {
-      const station = STATIONS.find((item) => item.name === train.from);
+      // A trip picked from a route search is the next run, which starts at the origin.
+      const station = STATIONS.find(
+        (item) =>
+          item.name ===
+          (train.status === "arrived" && !trainLeg ? train.to : train.from),
+      );
       if (station)
         mapRef.current?.flyTo(station.coordinates, viewPadding(true));
       return;
@@ -798,11 +866,11 @@ export default function Home() {
             .map(([value, label]) => (
               <button
                 key={value}
-                aria-pressed={stationView.type === value}
+                aria-pressed={stationType === value}
                 onClick={() =>
                   setStationViewState({ ...stationView, id: stationId, type: value })
                 }
-                className={`flex h-7 shrink-0 items-center gap-1 rounded-full px-3 text-xs font-medium transition-colors ${stationView.type === value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+                className={`flex h-7 shrink-0 items-center gap-1 rounded-full px-3 text-xs font-medium transition-colors ${stationType === value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
               >
                 {label}
                 <span className="tabular-nums opacity-70">
@@ -850,15 +918,21 @@ export default function Home() {
                           </span>
                         )}
                       </span>
-                      <span className="shrink-0 text-xs font-medium whitespace-nowrap text-emerald-700 tabular-nums dark:text-emerald-400">
-                        {wait < 60_000
-                          ? t("station.now")
-                          : wait < 3_600_000
-                            ? t("dur.m", { m: Math.round(wait / 60_000) })
-                            : wait < 6 * 3_600_000
-                              ? duration(wait)
-                              : t("dur.h", { h: Math.round(wait / 3_600_000) })}
-                      </span>
+                      {train.cancelled ? (
+                        <span className="shrink-0 text-xs font-medium whitespace-nowrap text-red-700 dark:text-red-300">
+                          {t("status.cancelled")}
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-xs font-medium whitespace-nowrap text-emerald-700 tabular-nums dark:text-emerald-400">
+                          {wait < 60_000
+                            ? t("station.now")
+                            : wait < 3_600_000
+                              ? t("dur.m", { m: Math.round(wait / 60_000) })
+                              : wait < 6 * 3_600_000
+                                ? duration(wait)
+                                : t("dur.h", { h: Math.round(wait / 3_600_000) })}
+                        </span>
+                      )}
                     </span>
                     <span className="flex flex-col">
                     <span className="grid grid-cols-[10px_1fr_auto] items-center gap-x-3 py-1.5">
@@ -876,7 +950,7 @@ export default function Home() {
                         {now !== null &&
                           detailDate.format(arrivalTab ? train.departure + gap : time) !== detailDate.format(now) && (
                             <span className="text-[11px] text-muted-foreground">
-                              {detailDate.format(arrivalTab ? train.departure + gap : time).slice(5)}
+                              {shortDate.format(arrivalTab ? train.departure + gap : time)}
                             </span>
                           )}
                       </span>
@@ -896,7 +970,7 @@ export default function Home() {
                         {now !== null &&
                           detailDate.format(arrivalTab ? time : train.arrival + gap) !== detailDate.format(now) && (
                             <span className="text-[11px] text-muted-foreground">
-                              {detailDate.format(arrivalTab ? time : train.arrival + gap).slice(5)}
+                              {shortDate.format(arrivalTab ? time : train.arrival + gap)}
                             </span>
                           )}
                       </span>
@@ -981,15 +1055,21 @@ export default function Home() {
                       </span>
                     )}
                   </span>
-                  <span className="shrink-0 text-xs font-medium whitespace-nowrap text-emerald-700 tabular-nums dark:text-emerald-400">
-                    {wait < 60_000
-                      ? t("station.now")
-                      : wait < 3_600_000
-                        ? t("dur.m", { m: Math.round(wait / 60_000) })
-                        : wait < 6 * 3_600_000
-                          ? duration(wait)
-                          : t("dur.h", { h: Math.round(wait / 3_600_000) })}
-                  </span>
+                  {train.cancelled ? (
+                    <span className="shrink-0 text-xs font-medium whitespace-nowrap text-red-700 dark:text-red-300">
+                      {t("status.cancelled")}
+                    </span>
+                  ) : (
+                    <span className="shrink-0 text-xs font-medium whitespace-nowrap text-emerald-700 tabular-nums dark:text-emerald-400">
+                      {wait < 60_000
+                        ? t("station.now")
+                        : wait < 3_600_000
+                          ? t("dur.m", { m: Math.round(wait / 60_000) })
+                          : wait < 6 * 3_600_000
+                            ? duration(wait)
+                            : t("dur.h", { h: Math.round(wait / 3_600_000) })}
+                    </span>
+                  )}
                 </span>
                 <span className="flex flex-col">
                   <span className="grid grid-cols-[10px_1fr_auto] items-center gap-x-3 py-1.5">
@@ -1007,7 +1087,7 @@ export default function Home() {
                       {now !== null &&
                         detailDate.format(depart) !== detailDate.format(now) && (
                           <span className="text-[11px] text-muted-foreground">
-                            {detailDate.format(depart).slice(5)}
+                            {shortDate.format(depart)}
                           </span>
                         )}
                     </span>
@@ -1027,7 +1107,7 @@ export default function Home() {
                       {now !== null &&
                         detailDate.format(arrive) !== detailDate.format(now) && (
                           <span className="text-[11px] text-muted-foreground">
-                            {detailDate.format(arrive).slice(5)}
+                            {shortDate.format(arrive)}
                           </span>
                         )}
                     </span>
@@ -1070,8 +1150,24 @@ export default function Home() {
             </button>
           ) : (
             routeActive && (
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {t("list.trips", { n: routeResults.length })}
+              <span className="flex items-center gap-1">
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {t("list.trips", { n: routeResults.length })}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="-mr-2 size-8 text-muted-foreground"
+                  aria-label={t(shared ? "route.copied" : "route.share")}
+                  title={t(shared ? "route.copied" : "route.share")}
+                  onClick={shareRoute}
+                >
+                  {shared ? (
+                    <Check className="size-4 text-primary" />
+                  ) : (
+                    <Share2 className="size-4" />
+                  )}
+                </Button>
               </span>
             )
           )}
@@ -1178,6 +1274,24 @@ export default function Home() {
               </div>
             </div>
           </div>
+        {!routePick.from && !routePick.to && !routeText.from && !routeText.to && (
+          <div
+            role="group"
+            aria-label={t("route.popular")}
+            className="-mx-5 mt-3 flex gap-1.5 overflow-x-auto px-5 [scrollbar-width:none]"
+          >
+            {POPULAR_ROUTES.map(([from, to]) => (
+              <button
+                key={`${from}-${to}`}
+                type="button"
+                onClick={() => setRoutePick({ from, to })}
+                className="flex h-8 shrink-0 items-center rounded-full border border-border bg-card px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground active:bg-accent"
+              >
+                {`${cityName(from)} → ${cityName(to)}`}
+              </button>
+            ))}
+          </div>
+        )}
         {filtersOpen && (
           <div
             role="group"
@@ -1369,6 +1483,20 @@ export default function Home() {
               <p className="text-right">{place(trip.to)}</p>
             </div>
           </Card>
+          {!selected.cancelled && (
+            <a
+              href={selected.kind ? TICKET_SITE.electric : TICKET_SITE.intercity}
+              target="_blank"
+              rel="noreferrer"
+              className={buttonVariants({
+                variant: "outline",
+                className: "h-10 w-full gap-2 rounded-xl",
+              })}
+            >
+              <Ticket className="size-4 text-primary" aria-hidden="true" />
+              {t("details.buy")}
+            </a>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <Card className="flex-row items-center gap-3 rounded-xl px-3 py-2.5 shadow-sm">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
@@ -1502,6 +1630,7 @@ export default function Home() {
             </Card>
           )}
           <p className="px-1 text-[10px] text-muted-foreground">
+            {t("details.dataDate")}
             {selected.number === "730F" && t("details.unconfirmed")}
           </p>
         </div>
@@ -1525,6 +1654,7 @@ export default function Home() {
           }))}
           stationLabel={(name) => t("map.stationLabel", { n: name })}
           trainLabel={(number) => t("map.trainLabel", { n: number })}
+          lang={lang}
           trains={
             focused
               ? trainMarker(focused)
@@ -1538,7 +1668,11 @@ export default function Home() {
                   .flatMap(trainMarker)
           }
           selectedRoute={detailsOpen ? selectedRoute : undefined}
-          selectedProgress={selected?.progress ?? 0}
+          selectedProgress={
+            shownSelected && selectedRoute
+              ? routeProgress(shownSelected, selectedRoute)
+              : 0
+          }
           selectedStationId={stationId}
           selectedTrainId={selectedId}
           palette={palette}
@@ -1645,14 +1779,14 @@ export default function Home() {
         </Button>
       </div>
       <div className="absolute top-[88px] left-3 z-10 md:top-auto md:bottom-10 md:left-[360px]">
-        {selected && (
+        {detailsOpen && selectedRoute && (
           <div className="floating-surface flex gap-3 rounded-lg px-3 py-2 text-[11px] md:mt-2">
             <span className="flex items-center gap-1.5">
-              <span className="h-0.5 w-3 bg-muted-foreground" />
+              <span className="h-0.5 w-3 bg-primary" />
               {t("map.legendPassed")}
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-0.5 w-3 bg-primary" />
+              <span className="h-0.5 w-3 bg-slate-500" />
               {t("map.legendRemaining")}
             </span>
           </div>
@@ -1718,7 +1852,9 @@ export default function Home() {
                   ? "66dvh"
                   : activeStation || routeActive
                     ? "58dvh"
-                    : "max(23rem, 44dvh)"),
+                    : routeSuggestions.length > 0 || filtersOpen
+                      ? "max(23rem, 44dvh)"
+                      : "calc(14.5rem + env(safe-area-inset-bottom))"),
             }
           }
         >
@@ -1838,32 +1974,6 @@ export default function Home() {
                   : activeStationInfo.image.license,
             })}
           </a>
-        </div>
-      )}
-      {cookieChoice === null && (
-        <div
-          role="dialog"
-          aria-label={t("cookies.title")}
-          className="floating-surface fixed inset-x-3 bottom-3 z-[70] flex flex-col gap-3 rounded-xl p-4 md:inset-x-auto md:bottom-5 md:left-5 md:w-[420px]"
-        >
-          <div>
-            <p className="text-sm font-semibold">{t("cookies.title")}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {t("cookies.text")}
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant="outline"
-              className="h-10"
-              onClick={() => answerCookies("refused")}
-            >
-              {t("cookies.refuse")}
-            </Button>
-            <Button className="h-10" onClick={() => answerCookies("accepted")}>
-              {t("cookies.accept")}
-            </Button>
-          </div>
         </div>
       )}
     </main>

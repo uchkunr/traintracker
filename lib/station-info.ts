@@ -12,16 +12,7 @@ export interface StationInfo {
 const uzbekistan = { country: "O‘zbekiston" };
 
 export const STATION_INFO: Record<string, StationInfo> = {
-  "Toshkent Markaziy": {
-    ...uzbekistan,
-    image: {
-      src: "https://dynamic-media-cdn.tripadvisor.com/media/photo-o/2f/69/95/e7/caption.jpg?w=1200&h=1200&s=1",
-      alt: "Toshkent Markaziy vokzali",
-      author: "Tripadvisor",
-      license: "Manba sayti",
-      sourceUrl: "https://dynamic-media-cdn.tripadvisor.com/media/photo-o/2f/69/95/e7/caption.jpg?w=1200&h=1200&s=1",
-    },
-  },
+  "Toshkent Markaziy": uzbekistan,
   "Toshkent Janubiy": {
     ...uzbekistan,
     image: {
@@ -82,7 +73,7 @@ export const STATION_INFO: Record<string, StationInfo> = {
       sourceUrl: "https://uzrailpass.uz/vip/namangan-temir-yol-stantsiyasi",
     },
   },
-  "Qo'qon": {
+  "Qo‘qon": {
     ...uzbekistan,
     image: {
       src: "/stations/qoqon.jpg",
@@ -132,7 +123,7 @@ export const STATION_INFO: Record<string, StationInfo> = {
       sourceUrl: "https://uzrailpass.uz/vip/sariosiyo-temir-yol-vokzali",
     },
   },
-  "Qo'ng'irot": {
+  "Qo‘ng‘irot": {
     ...uzbekistan,
     image: {
       src: "/stations/qongirot.jpg",

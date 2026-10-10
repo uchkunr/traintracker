@@ -3,7 +3,6 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
-      { protocol: "https", hostname: "dynamic-media-cdn.tripadvisor.com" },
       { protocol: "https", hostname: "uzrailpass.uz" },
       { protocol: "https", hostname: "avatars.mds.yandex.net" },
       { protocol: "https", hostname: "central-asia.guide" },

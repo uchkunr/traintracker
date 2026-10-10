@@ -69,8 +69,8 @@ export const STATIONS: Station[] = [
     "source": "https://www.openstreetmap.org/node/301722995"
   },
   {
-    "id": "Qo'qon",
-    "name": "Qo'qon",
+    "id": "Qo‘qon",
+    "name": "Qo‘qon",
     "coordinates": [
       70.9284653,
       40.5190131
@@ -114,8 +114,8 @@ export const STATIONS: Station[] = [
     "source": "https://www.openstreetmap.org/node/245671297"
   },
   {
-    "id": "Qo'ng'irot",
-    "name": "Qo'ng'irot",
+    "id": "Qo‘ng‘irot",
+    "name": "Qo‘ng‘irot",
     "coordinates": [
       58.8413277,
       43.0407388
@@ -406,7 +406,7 @@ export const INTERNATIONAL_RAIL_SEGMENTS: RailNetwork["features"] = [
   },
   {
     type: "Feature",
-    properties: { id: "Qo'ng'irot|Volgograd", fromStation: "Qo'ng'irot", toStation: "Volgograd", osmWays: [] },
+    properties: { id: "Qo‘ng‘irot|Volgograd", fromStation: "Qo‘ng‘irot", toStation: "Volgograd", osmWays: [] },
     geometry: {
       type: "LineString",
       coordinates: [
@@ -486,8 +486,8 @@ export function buildRoutes(network: RailNetwork, electricLines?: Record<string,
 
 function routeWaypoints(train: ScheduleEntry) {
   // These shape the railway corridor, not the advertised stopping timetable.
-  if (!train.via.length && train.from === "Andijon") return [train.from, "Marg‘ilon", "Qo'qon", "Pop", train.to];
-  if (!train.via.length && train.to === "Andijon") return [train.from, "Pop", "Qo'qon", "Marg‘ilon", train.to];
+  if (!train.via.length && train.from === "Andijon") return [train.from, "Marg‘ilon", "Qo‘qon", "Pop", train.to];
+  if (!train.via.length && train.to === "Andijon") return [train.from, "Pop", "Qo‘qon", "Marg‘ilon", train.to];
   return [train.from, ...train.via, train.to];
 }
 

@@ -51,10 +51,10 @@ test('072F even departure and odd arrival, overnight is still running', () => {
   assert.equal(entry('072F').departDays.kind,'even'); assert.equal(entry('072F').arriveDays.kind,'odd');
   assert.equal(train.departure,time('2026-10-06T22:34:00')); assert.equal(train.arrival,time('2026-10-07T09:39:00')); assert.equal(train.status,'running');
 });
-test('071F odd departure and even arrival at month boundary uses calendar parity', () => {
+test('071F odd departure arrives the next morning, also on the 31st', () => {
   assert.equal(entry('071F').departDays.kind,'odd'); assert.equal(entry('071F').arriveDays.kind,'even');
   const departure=time('2026-01-31T20:30:00');
-  assert.equal(resolveArrival(entry('071F'),departure),time('2026-02-02T07:03:00'));
+  assert.equal(resolveArrival(entry('071F'),departure),time('2026-02-01T07:03:00'));
   assert.equal(matchesDay({kind:'odd'},'2026-02-01'),true);
   assert.equal(matchesDay({kind:'even'},'2028-02-29'),false);
 });

@@ -14,8 +14,13 @@ Each language has its own crawlable URL: Uzbek (default) at the root, English un
 | --- | --- | --- |
 | Map | `/` | `/en` |
 | About | `/about` | `/en/about` |
+| Privacy policy | `/privacy` | `/en/privacy` |
+| Terms of use | `/terms` | `/en/terms` |
 | All routes | `/trains` | `/en/trains` |
 | Route timetable | `/trains/<from>/<to>` | `/en/trains/<from>/<to>` |
+| Map with a route filled in | `/?from=<from>&to=<to>` | `/en?from=<from>&to=<to>` |
+
+The map reads `from` and `to` (station slugs) once and then removes them from the address bar, so a refresh starts clean. The share button in the route results builds this link.
 
 `proxy.ts` rewrites the root to `/uz` internally and redirects a stray `/uz` URL back. A returning visitor who chose English (cookie `traintracker-lang`) is redirected to `/en`; crawlers carry no cookie and always get the default URLs.
 

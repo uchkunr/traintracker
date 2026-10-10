@@ -11,7 +11,7 @@ const COPY = {
     back: "Xaritaga qaytish",
     langLabel: "Til",
     title: "Loyiha haqida",
-    intro: "Poyezd jadvali odatda vaqtlar ro‘yxati bo‘lib, yo‘nalishni tasavvur qilish qiyin. TrainTracker.uz shu jadvalni xaritaga joylaydi: poyezd hozir qayerda, qaysi bekatlardan o‘tadi va qachon yetib boradi, hammasi bir qarashda ko‘rinadi.",
+    intro: "TrainTracker.uz poyezd jadvalini xaritaga joylaydi: poyezd hozir qayerda va qachon yetib borishi bir qarashda ko‘rinadi.",
     dataTitle: "Ma’lumotlar",
     sources: [
       ["Jadval va narxlar", "eticket.railway.uz", "https://eticket.railway.uz/"],
@@ -19,24 +19,21 @@ const COPY = {
       ["Oraliq bekatlar", "Yandex Rasp", "https://rasp.yandex.ru/"],
       ["Xarita", "OpenStreetMap", "https://www.openstreetmap.org/copyright"],
     ],
-    dataNote: "Ma’lumotlar 2026-yil 6-oktabr holatida olingan.",
+    dataNote: "Jadval 2026-yil 6-oktabr holatiga.",
     liveTitle: "Real vaqt",
-    live: "Poyezdlarda GPS kuzatuvi yo‘q. Shuning uchun joylashuv jadvaldan hisoblab chiqiladi va har soniyada yangilanadi.",
-    steps: [
-      "Reysning jo‘nash va yetib borish vaqti olinadi (Toshkent vaqti, UTC+5).",
-      "Hozirgi vaqt shu oraliqning qancha qismi o‘tganini ko‘rsatadi.",
-      "Poyezd rels chizig‘ining xuddi shu joyiga qo‘yiladi.",
-    ],
-    formula: "progress = (hozir - jo‘nash) / davomiylik",
-    note: "Joylashuv taxminiy: kechikishlar hisobga olinmaydi. Chipta olishdan oldin eticket.railway.uz saytida tekshirib oling. Loyiha mustaqil va O‘zbekiston temir yo‘llari bilan rasmiy aloqasi yo‘q.",
+    live: "Poyezdlarda GPS yo‘q, joylashuv jadvaldan hisoblanadi. Bekatlarda to‘xtash vaqti hisobga olinadi, kechikishlar esa yo‘q.",
+    formula: "progress = (hozir - bekatdan jo‘nash) / keyingi bekatgacha vaqt",
+    note: "Loyiha mustaqil va O‘zbekiston temir yo‘llari bilan bog‘liq emas.",
     authorTitle: "Muallif",
     contact: "Bog‘lanish",
+    privacy: "Maxfiylik siyosati",
+    terms: "Foydalanish shartlari",
   },
   en: {
     back: "Back to the map",
     langLabel: "Language",
     title: "About",
-    intro: "A train timetable is usually a list of times, which makes a route hard to picture. TrainTracker.uz puts that timetable on a map, so you can see where a train is now, which stations it passes and when it arrives.",
+    intro: "TrainTracker.uz puts the train timetable on a map, so you can see where a train is now and when it arrives.",
     dataTitle: "Data",
     sources: [
       ["Timetable and fares", "eticket.railway.uz", "https://eticket.railway.uz/"],
@@ -44,18 +41,15 @@ const COPY = {
       ["Intermediate stops", "Yandex Rasp", "https://rasp.yandex.ru/"],
       ["Map", "OpenStreetMap", "https://www.openstreetmap.org/copyright"],
     ],
-    dataNote: "Data was collected on 6 October 2026.",
+    dataNote: "Timetable as of 6 October 2026.",
     liveTitle: "Real time",
-    live: "Trains are not tracked by GPS, so the position is worked out from the timetable and updated every second.",
-    steps: [
-      "We take the service’s departure and arrival times (Tashkent time, UTC+5).",
-      "The current time tells us how much of that interval has passed.",
-      "The train is drawn at the same point along the rail line.",
-    ],
-    formula: "progress = (now - departure) / duration",
-    note: "The position is an estimate and delays are not included. Check eticket.railway.uz before you buy a ticket. The project is independent and has no official link with Uzbekistan Railways.",
+    live: "Trains are not tracked by GPS, so the position is worked out from the timetable. Station stops are included, delays are not.",
+    formula: "progress = (now - left the stop) / time to the next stop",
+    note: "The project is independent and not affiliated with Uzbekistan Railways.",
     authorTitle: "Author",
     contact: "Contact",
+    privacy: "Privacy policy",
+    terms: "Terms of use",
   },
 } as const;
 
@@ -107,9 +101,6 @@ export function AboutContent() {
 
             <Section title={c.liveTitle}>
               <p className="text-sm leading-relaxed">{c.live}</p>
-              <ol className="mt-3 space-y-2 text-sm leading-relaxed text-muted-foreground">
-                {c.steps.map((step, index) => <li key={step} className="grid grid-cols-[1.25rem_1fr]"><span className="font-semibold text-foreground tabular-nums">{index + 1}</span><span>{step}</span></li>)}
-              </ol>
               <p className="mt-4 rounded-lg bg-muted px-3 py-2.5 font-mono text-xs break-words">{c.formula}</p>
               <p className="mt-4 text-xs leading-relaxed text-muted-foreground">{c.note}</p>
             </Section>
@@ -119,6 +110,10 @@ export function AboutContent() {
               <p className="mt-1 text-sm text-muted-foreground">{c.contact}: <a href="mailto:uchkunrakhimov@gmail.com" className="font-semibold text-foreground underline-offset-4 hover:text-primary hover:underline">uchkunrakhimov@gmail.com</a></p>
             </Section>
           </div>
+          <nav className="flex gap-5 border-t border-border pt-6 text-xs text-muted-foreground">
+            <Link href={localePath(lang, "/privacy")} className="hover:text-foreground">{c.privacy}</Link>
+            <Link href={localePath(lang, "/terms")} className="hover:text-foreground">{c.terms}</Link>
+          </nav>
         </div>
       </div>
     </main>
