@@ -2,6 +2,10 @@
 
 Uzbekistan train map and timetable (O‘zbekiston poyezdlari xaritasi va jadvali). Built with Next.js, MapLibre and OpenFreeMap vector tiles.
 
+Live: [traintracker-beta.vercel.app](https://traintracker-beta.vercel.app)
+
+![TrainTracker.uz: a train's position and stops, route search and a station departures board](docs/demo.gif)
+
 ```bash
 npm run dev
 ```
